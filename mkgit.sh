@@ -9,9 +9,67 @@
 # Loosely based on an earlier script by Julian Kongslie
 
 PGM="`basename $0`"
-USAGE="$PGM: usage: $PGM ssh://[<user>@]host/<dir>/<project>.git [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-X svcs] [-p|-d <desc>] ssh://[<user>@]host/<dir>/<project>.git [<git-dir>]"
 
-if [ $# -lt 1 ] || [ $# -gt 2 ]
+SVCS=false
+PUBLIC=false
+PRIVATE=false
+
+while [ $# -gt 0 ]
+do
+    case "$1" in
+    -X)
+        case "$2" in
+	svcs)
+	    SVCS=true
+	    ;;
+	*)
+	    echo "$PGM: unknown -X option: $2" >&2
+	    exit 1
+	    ;;
+	esac
+	shift 2
+	;;
+    -d)
+	case "$PRIVATE" in
+	true)
+	    echo "$PGM: both private and public were specified"
+	    exit 1
+	    ;;
+	esac
+        PUBLIC=true
+	DESC="$2"
+	shift 2
+	;;
+    -p)
+	case "$PUBLIC" in
+	true)
+	    echo "$PGM: both public and private were specified"
+	    exit 1
+	    ;;
+	esac
+        PRIVATE=true
+	shift
+	;;
+    -*)
+	echo "$USAGE" >&2
+	exit 1
+	;;
+    *)
+	break
+	;;
+    esac
+done
+
+if $PUBLIC || $PRIVATE
+then
+    :
+else
+    echo "$PGM: neither public (-d <desc>) nor private (-p) was specified" >&2
+    exit 1
+fi
+
+if [ $# -gt 2 ]
 then
     echo "$USAGE" >&2
     exit 1
@@ -24,7 +82,13 @@ HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
 PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
 PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\(.*\.git$\)'`"
 
-if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
+if $SVCS
+then
+    HOST=svcs.cs.pdx.edu
+    PARENT=/storage/git/
+    PROJECT="$URL"
+    URL="ssh://$HOST/$PARENT/$PROJECT"
+elif [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
 then
     echo "$USAGE" >&2
     exit 1
@@ -54,7 +118,13 @@ ssh "${HOST}" <<EOF
 cd "${PARENTQ}" &&
 mkdir "${PROJECTQ}" &&
 cd "${PROJECTQ}" &&
-git init --bare --shared=group
+git init --bare --shared=group &&
+if $PUBLIC
+then
+  touch git-daemon-export-ok
+  echo "${DESC}" >description
+  ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
+fi
 EOF
 if [ "$?" -ne 0 ]
 then
