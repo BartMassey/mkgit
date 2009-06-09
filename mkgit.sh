@@ -85,9 +85,17 @@ PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\(.*\.git$\)'`"
 if $SVCS
 then
     HOST=svcs.cs.pdx.edu
-    PARENT=/storage/git/
+    PARENT=/storage/git
     PROJECT="$URL"
-    URL="ssh://$HOST/$PARENT/$PROJECT"
+    case "$PROJECT" in
+    *.git)
+        ;;
+    *)
+        PROJECT="$PROJECT".git
+	echo "$PGM: warning: added .git to project" >&2
+	;;
+    esac
+    URL="ssh://${HOST}${PARENT}/${PROJECT}"
 elif [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
 then
     echo "$USAGE" >&2
