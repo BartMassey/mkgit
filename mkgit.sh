@@ -88,6 +88,17 @@ then
     PARENT=/storage/git
     PROJECT="$URL"
     case "$PROJECT" in
+    "")
+	PROJECT="`basename \"\`pwd\`\"`"
+	case "$PROJECT" in
+	*.git)
+	  ;;
+        *)
+	  PROJECT="$PROJECT".git
+	  ;;
+	esac
+        echo "$PGM: warning: no project name specified, so using $PROJECT" >&2
+	;;
     *.git)
         ;;
     *)
@@ -140,7 +151,14 @@ then
     exit 1
 fi
 
-git remote add -t master -m master origin "$URL"
+if git remote add -t master -m master origin "$URL"
+then
+  :
+else
+  echo "$PGM: warning: updating remote"
+  git remote rm origin
+  git remote add -t master -m master origin "$URL"
+fi
 git push origin +master:master
 if [ "$?" -ne 0 ]
 then
