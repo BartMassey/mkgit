@@ -9,7 +9,7 @@
 # Loosely based on an earlier script by Julian Kongslie
 
 PGM="`basename $0`"
-USAGE="$PGM: usage: $PGM [-X big-site] [-p|-d <desc>] ssh://[<user>@]host/<dir>/<project>.git [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X big-site [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
 
 SVCS=false
 PUBLIC=false
