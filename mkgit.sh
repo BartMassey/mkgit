@@ -9,8 +9,9 @@
 # Loosely based on an earlier script by Julian Kongslie
 
 PGM="`basename $0`"
-USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X big-site [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [big-site|little-site|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
 
+X=''
 SVCS=false
 PUBLIC=false
 PRIVATE=false
@@ -19,15 +20,7 @@ while [ $# -gt 0 ]
 do
     case "$1" in
     -X)
-        case "$2" in
-	big-site)
-	    SVCS=true
-	    ;;
-	*)
-	    echo "$PGM: unknown -X option: $2" >&2
-	    exit 1
-	    ;;
-	esac
+	X="$2"
 	shift 2
 	;;
     -d)
@@ -82,10 +75,23 @@ HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
 PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
 PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\(.*\.git$\)'`"
 
-if $SVCS
-then
+case $X in
+big-site)
+    SVCS=true
     HOST=big-site.example.org
     PARENT=/storage/git
+    X=personal
+    ;;
+little-site)
+    HOST=little-site.example.org
+    PARENT=/storage/git
+    X=personal
+    ;;
+esac
+case $X in
+""|na)
+    ;;
+*)
     PROJECT="$URL"
     case "$PROJECT" in
     "")
@@ -106,12 +112,89 @@ then
 	echo "$PGM: warning: added .git to project" >&2
 	;;
     esac
+    ;;
+esac
+
+case $X in
+personal)
     URL="ssh://${HOST}${PARENT}/${PROJECT}"
-elif [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
-then
+    QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
+    PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
+    PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
+    ssh "${HOST}" <<EOF
+    cd "${PARENTQ}" &&
+    mkdir "${PROJECTQ}" &&
+    cd "${PROJECTQ}" &&
+    git init --bare --shared=group &&
+    if $PUBLIC
+    then
+      touch git-daemon-export-ok
+      echo "${DESC}" >description
+      ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
+    fi
+EOF
+    if [ "$?" -ne 0 ]
+    then
+	echo "$PGM: ssh to create repo failed" >&2
+	exit 1
+    fi
+    ;;
+github)
+    if $PRIVATE
+    then
+	echo "$PGM: cannot create private github repos" >&2
+	exit 1
+    fi
+    if [ ! -f "$HOME/.githubuser" ] || [ ! -f "$HOME/.githubtoken" ]
+    then
+	echo "$PGM: need \$HOME/.githubuser and \$HOME/.githubtoken" >&2
+	exit 1
+    fi
+    PROJECT="`basename $PROJECT`"
+    GITHUBUSER="`cat $HOME/.githubuser`"
+    GITHUBTOKEN="`cat $HOME/.githubtoken`"
+    URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}.git"
+    MSGTMP="/tmp/mkgit-curlmsg.$$"
+    trap "rm -f $MSGTMP" 0 1 2 3 15
+    if curl \
+         -F "login=$GITHUBUSER" \
+         -F "token=$GITHUBTOKEN" \
+	 https://github.com/api/v2/yaml/repos/create \
+         -F "name=$PROJECT" >$MSGTMP
+    then
+	:
+    else
+	echo "failed to create github repository:" >&2
+	cat $MSGTMP >&2
+	exit 1
+    fi
+    if curl \
+         -F "login=$GITHUBUSER" \
+         -F "token=$GITHUBTOKEN" \
+	 "https://github.com/api/v2/yaml/repos/show/$GITHUBUSER/$PROJECT" \
+         -F "values[description]=$DESC" >$MSGTMP
+    then
+	:
+    else
+e	echo "failed to set github description:" >&2
+	cat $MSGTMP >&2
+	exit 1
+    fi
+    ;;
+"")
+    if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
+    then
+        echo "$USAGE" >&2
+        exit 1
+    fi
+    ;;
+na)
+    ;;
+*)
     echo "$USAGE" >&2
     exit 1
-fi
+    ;;
+esac
 
 if [ $# -eq 2 ]
 then
@@ -127,27 +210,6 @@ fi
 if [ ! -d ".git" ]
 then
     echo "$PGM: directory ${GITDIR} is not a git working directory!" 1>&2
-    exit 1
-fi
-
-QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
-PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
-PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-ssh "${HOST}" <<EOF
-cd "${PARENTQ}" &&
-mkdir "${PROJECTQ}" &&
-cd "${PROJECTQ}" &&
-git init --bare --shared=group &&
-if $PUBLIC
-then
-  touch git-daemon-export-ok
-  echo "${DESC}" >description
-  ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
-fi
-EOF
-if [ "$?" -ne 0 ]
-then
-    echo "$PGM: ssh to create repo failed" >&2
     exit 1
 fi
 
