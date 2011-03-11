@@ -228,4 +228,8 @@ then
     exit 1
 fi
 
+git config push.default tracking
+git config branch.master.remote origin
+git config branch.master.merge master
+
 exit 0
