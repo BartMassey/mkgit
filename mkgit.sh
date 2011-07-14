@@ -153,7 +153,7 @@ github)
     PROJECT="`basename $PROJECT`"
     GITHUBUSER="`cat $HOME/.githubuser`"
     GITHUBTOKEN="`cat $HOME/.githubtoken`"
-    URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}.git"
+    URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
     if curl \
@@ -213,23 +213,19 @@ then
     exit 1
 fi
 
-if git remote add -t master -m master origin "$URL"
+if git remote add origin "$URL"
 then
   :
 else
   echo "$PGM: warning: updating remote"
   git remote rm origin
-  git remote add -t master -m master origin "$URL"
+  git remote add origin "$URL"
 fi
-git push origin +master:master
+git push -u origin master
 if [ "$?" -ne 0 ]
 then
     echo "$PGM: push to origin failed" >&2
     exit 1
 fi
-
-git config push.default tracking
-git config branch.master.remote origin
-git config branch.master.merge master
 
 exit 0
