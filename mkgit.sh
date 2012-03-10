@@ -73,26 +73,23 @@ GITDIR="."
 
 HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
 PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
-PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\(.*\.git$\)'`"
+PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
 
 case $X in
 svcs)
     SVCS=true
     HOST=svcs.cs.pdx.edu
     PARENT=/storage/git
-    X=personal
     ;;
 po8)
     HOST=po8.org
     PARENT=/storage/git
-    X=personal
     ;;
 esac
 case $X in
-""|na)
+na)
     ;;
 *)
-    PROJECT="$URL"
     case "$PROJECT" in
     "")
 	PROJECT="`basename \"\`pwd\`\"`"
@@ -116,29 +113,6 @@ case $X in
 esac
 
 case $X in
-personal)
-    URL="ssh://${HOST}${PARENT}/${PROJECT}"
-    QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
-    PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
-    PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-    ssh "${HOST}" <<EOF
-    cd "${PARENTQ}" &&
-    mkdir "${PROJECTQ}" &&
-    cd "${PROJECTQ}" &&
-    git init --bare --shared=group &&
-    if $PUBLIC
-    then
-      touch git-daemon-export-ok
-      echo "${DESC}" >description
-      ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
-    fi
-EOF
-    if [ "$?" -ne 0 ]
-    then
-	echo "$PGM: ssh to create repo failed" >&2
-	exit 1
-    fi
-    ;;
 github)
     if $PRIVATE
     then
@@ -153,7 +127,7 @@ github)
     PROJECT="`basename $PROJECT`"
     GITHUBUSER="`cat $HOME/.githubuser`"
     GITHUBTOKEN="`cat $HOME/.githubtoken`"
-    URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
+    URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}.git"
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
     if curl \
@@ -186,6 +160,31 @@ e	echo "failed to set github description:" >&2
     then
         echo "$USAGE" >&2
         exit 1
+    fi
+    echo "$PARENT"
+    echo "$PROJECT"
+    URL="ssh://${HOST}${PARENT}/${PROJECT}"
+    QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
+    PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
+    PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
+    echo "$PARENTQ"
+    echo "$PROJECTQ"
+    ssh "${HOST}" <<EOF
+    cd "${PARENTQ}" &&
+    mkdir "${PROJECTQ}" &&
+    cd "${PROJECTQ}" &&
+    git init --bare --shared=group &&
+    if $PUBLIC
+    then
+      touch git-daemon-export-ok
+      echo "${DESC}" >description
+      ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
+    fi
+EOF
+    if [ "$?" -ne 0 ]
+    then
+	echo "$PGM: ssh to create repo failed" >&2
+	exit 1
     fi
     ;;
 na)
