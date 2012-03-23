@@ -127,7 +127,7 @@ github)
     PROJECT="`basename $PROJECT`"
     GITHUBUSER="`cat $HOME/.githubuser`"
     GITHUBTOKEN="`cat $HOME/.githubtoken`"
-    URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}.git"
+    URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}"
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
     if curl \
