@@ -68,12 +68,9 @@ then
     exit 1
 fi
 
-URL="$1"
+PROJECT="$1"
 GITDIR="."
 
-HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
-PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
-PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
 
 case $X in
 big-site)
@@ -84,6 +81,25 @@ big-site)
 little-site)
     HOST=little-site.example.org
     PARENT=/storage/git
+    ;;
+"")
+    HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
+    PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
+    PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
+    if [ "$PROJECT" = "" ]
+    then
+        PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/.]*$\)'`"
+    fi
+    if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
+    then
+        echo "$PGM: bad repo URL \"$HOST\", giving up" >&2
+        exit 1
+        ;;
+    fi
+    ;;
+*)
+    echo "$PGM: unknown -X argument \"$X\", giving up" >&2
+    exit 1
     ;;
 esac
 case $X in
