@@ -12,7 +12,7 @@ PGM="`basename $0`"
 USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [big-site|little-site|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
 
 X=''
-SVCS=false
+MKLINK=false
 PUBLIC=false
 PRIVATE=false
 
@@ -77,7 +77,7 @@ PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
 
 case $X in
 big-site)
-    SVCS=true
+    MKLINK=true
     HOST=big-site.example.org
     PARENT=/storage/git
     ;;
@@ -178,7 +178,7 @@ e	echo "failed to set github description:" >&2
     then
       touch git-daemon-export-ok
       echo "${DESC}" >description
-      ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
+      ${MKLINK} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
     fi
 EOF
     if [ "$?" -ne 0 ]
