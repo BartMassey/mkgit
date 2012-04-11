@@ -94,7 +94,6 @@ little-site)
     then
         echo "$PGM: bad repo URL \"$HOST\", giving up" >&2
         exit 1
-        ;;
     fi
     ;;
 *)
