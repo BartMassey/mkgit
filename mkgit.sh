@@ -82,6 +82,8 @@ little-site)
     HOST=little-site.example.org
     PARENT=/storage/git
     ;;
+github|na)
+    ;;
 "")
     HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
     PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
