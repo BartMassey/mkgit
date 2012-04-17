@@ -9,10 +9,10 @@
 # Loosely based on an earlier script by Julian Kongslie
 
 PGM="`basename $0`"
-USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [svcs|po8|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [big-site|little-site|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
 
 X=''
-SVCS=false
+MKLINK=false
 PUBLIC=false
 PRIVATE=false
 
@@ -68,22 +68,39 @@ then
     exit 1
 fi
 
-URL="$1"
+PROJECT="$1"
 GITDIR="."
 
-HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
-PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
-PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
 
 case $X in
-svcs)
-    SVCS=true
-    HOST=svcs.cs.pdx.edu
+big-site)
+    MKLINK=true
+    HOST=big-site.example.org
     PARENT=/storage/git
     ;;
-po8)
-    HOST=po8.org
+little-site)
+    HOST=little-site.example.org
     PARENT=/storage/git
+    ;;
+github|na)
+    ;;
+"")
+    HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
+    PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
+    PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
+    if [ "$PROJECT" = "" ]
+    then
+        PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/.]*$\)'`"
+    fi
+    if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
+    then
+        echo "$PGM: bad repo URL \"$HOST\", giving up" >&2
+        exit 1
+    fi
+    ;;
+*)
+    echo "$PGM: unknown -X argument \"$X\", giving up" >&2
+    exit 1
     ;;
 esac
 case $X in
@@ -178,7 +195,7 @@ e	echo "failed to set github description:" >&2
     then
       touch git-daemon-export-ok
       echo "${DESC}" >description
-      ${SVCS} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
+      ${MKLINK} && ln -s "${PARENTQ}/${PROJECTQ}" /git/.
     fi
 EOF
     if [ "$?" -ne 0 ]
