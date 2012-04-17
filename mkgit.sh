@@ -9,7 +9,7 @@
 # Loosely based on an earlier script by Julian Kongslie
 
 BIN="`echo $0 | sed 's=[^/]*$=='`"
-SITESCRIPTS="`ls ${BIN}mkgit-*`"
+SITESCRIPTS="`ls ${BIN} | egrep '^mkgit-'`"
 SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
 case $BIN in '') BIN='.' ;; esac
 PGM="`basename $0`"
