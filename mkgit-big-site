@@ -1,0 +1,3 @@
+MKLINK=true
+HOST=big-site.example.org
+PARENT=/storage/git

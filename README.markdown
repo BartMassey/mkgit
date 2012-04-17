@@ -14,6 +14,12 @@ switch is convenient for pushing there: it uses the GitHub
 API to create the new repo before pushing. Say "mkgit -h"
 for details on all of this.
 
+The "magic -X modes" are customized by putting site variable
+definitions in mkgit-<site> in the same bin directory as
+mkgit. See mkgit-big-site and mkgit-little-site for
+examples. All of this is fragile and a bit experimental:
+patches welcome.
+
 This work is under an MIT license. See
 [opensource.org](http://opensource.org/licenses/mit-license.php)
 for licensing information.
