@@ -8,8 +8,12 @@
 #
 # Loosely based on an earlier script by Julian Kongslie
 
+BIN="`echo $0 | sed 's=[^/]*$=='`"
+SITESCRIPTS="`ls ${BIN}mkgit-*`"
+SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
+case $BIN in '') BIN='.' ;; esac
 PGM="`basename $0`"
-USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [big-site|little-site|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [$SITES|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
 
 X=''
 MKLINK=false
@@ -73,15 +77,6 @@ GITDIR="."
 
 
 case $X in
-big-site)
-    MKLINK=true
-    HOST=big-site.example.org
-    PARENT=/storage/git
-    ;;
-little-site)
-    HOST=little-site.example.org
-    PARENT=/storage/git
-    ;;
 github|na)
     ;;
 "")
@@ -99,9 +94,16 @@ github|na)
     fi
     ;;
 *)
-    echo "$PGM: unknown -X argument \"$X\", giving up" >&2
-    exit 1
-    ;;
+    eval "case $X in
+    $SITES)
+        . $BIN/mkgit-$X
+        X=''
+        ;;
+    *)
+        echo \"$PGM: unknown -X argument \\\"$X\\\", giving up\" >&2
+        exit 1
+        ;;
+    esac"
 esac
 case $X in
 na)
@@ -178,14 +180,10 @@ e	echo "failed to set github description:" >&2
         echo "$USAGE" >&2
         exit 1
     fi
-    echo "$PARENT"
-    echo "$PROJECT"
     URL="ssh://${HOST}${PARENT}/${PROJECT}"
     QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
     PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
     PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-    echo "$PARENTQ"
-    echo "$PROJECTQ"
     ssh "${HOST}" <<EOF
     cd "${PARENTQ}" &&
     mkdir "${PROJECTQ}" &&
