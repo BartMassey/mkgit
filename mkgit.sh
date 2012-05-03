@@ -13,7 +13,7 @@ SITESCRIPTS="`ls ${BIN} | egrep '^mkgit-'`"
 SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
 case $BIN in '') BIN='.' ;; esac
 PGM="`basename $0`"
-USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [$SITES|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [${SITES:+$SITES|}github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
 
 X=''
 MKLINK=false
