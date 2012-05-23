@@ -72,12 +72,13 @@ then
     exit 1
 fi
 
-PROJECT="$1"
+URL="$1"
 GITDIR="."
 
 
 case $X in
 github|na)
+    PROJECT="$URL"
     ;;
 "")
     HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
@@ -94,6 +95,7 @@ github|na)
     fi
     ;;
 *)
+    PROJECT="$URL"
     eval "case $X in
     $SITES)
         . $BIN/mkgit-$X
@@ -186,7 +188,7 @@ e	echo "failed to set github description:" >&2
     PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
     ssh "${HOST}" <<EOF
     cd "${PARENTQ}" &&
-    mkdir "${PROJECTQ}" &&
+    mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&
     git init --bare --shared=group &&
     if $PUBLIC
