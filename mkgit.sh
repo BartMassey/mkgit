@@ -19,9 +19,10 @@ SITESCRIPTS="`ls ${BIN} | egrep '^mkgit-'`"
 # display and with shell eval.
 SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
 
-USAGE="$PGM: usage: $PGM [-p|-d <desc>]
-  [-X [${SITES:+$SITES|}github] [<project>[.git]] |
-   ssh://[<user>@]host/<dir>/<project>[.git]]
+USAGE="$PGM: usage:
+  $PGM [-p|-d <desc>]
+  [ -X ${SITES:+$SITES|}github [<project>[.git]]
+  | ssh://[<user>@]host/<dir>/<project>[.git]]
   [<source-dir>]"
 
 # Set by site script: symlinked name for repo.
