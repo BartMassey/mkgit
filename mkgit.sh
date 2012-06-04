@@ -181,7 +181,11 @@ github)
 	echo "$PGM: need \$HOME/.githubuser and \$HOME/.githubtoken" >&2
 	exit 1
     fi
-    PROJECT="`basename $PROJECT`"
+    if echo "$PROJECT" | grep / >/dev/null
+    then
+        echo "$PGM: error: GitHub name should not be a pathname" >&2
+        exit 1
+    fi
     GITHUBUSER="`cat $HOME/.githubuser`"
     GITHUBTOKEN="`cat $HOME/.githubtoken`"
     URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}"
