@@ -1,2 +1,2 @@
-    HOST=little-site.example.org
-    PARENT=/storage/git
+HOST=little-site.example.org
+PARENT=/storage/git
