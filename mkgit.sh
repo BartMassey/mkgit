@@ -19,7 +19,10 @@ SITESCRIPTS="`ls ${BIN} | egrep '^mkgit-'`"
 # display and with shell eval.
 SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
 
-USAGE="$PGM: usage: $PGM [-p|-d <desc>] [-X [$SITES|github|na] [<project>[.git]] | ssh://[<user>@]host/<dir>/<project>.git] [<git-dir>]"
+USAGE="$PGM: usage: $PGM [-p|-d <desc>]
+  [-X [$SITES|github] [<project>[.git]] |
+   ssh://[<user>@]host/<dir>/<project>[.git]]
+  [<source-dir>]"
 
 # Set by site script: symlinked name for repo.
 REPOLINK=""
@@ -32,8 +35,7 @@ PUBLIC=false
 # custom handling.
 X=""
 
-# HERE
-
+# Parse arguments.
 while [ $# -gt 0 ]
 do
     case "$1" in
@@ -60,6 +62,15 @@ do
     esac
 done
 
+# Check that there are few enough arguments left over
+# to make sense.
+if [ $# -gt 2 ]
+then
+    echo "$USAGE" >&2
+    exit 1
+fi
+
+# Check for screwups with public/private.
 case $PUBLIC:$PRIVATE in
 true:true)
     echo "$PGM: both public (-d <desc>) and private (-p) were specified" >&2
@@ -71,80 +82,98 @@ false:false)
     ;;
 esac
 
-if [ $# -gt 2 ]
+# Parse and rearrange to try to get things in a reasonable
+# order.
+
+# This may be empty if there are 0 extra arguments, in
+# which case we will default it appropriately.
+TARGET="$1"
+if [ $# -eq 0 ]
 then
-    echo "$USAGE" >&2
-    exit 1
+    TARGET="`basename \"\`pwd\`\"`"
 fi
 
-URL="$1"
-GITDIR="."
-
-
+# Try to get the PROJECT (i.e., repo name on target machine)
+# set up successfully. In the non-special case, also set up
+# HOST and PARENT for the upcoming ssh. Note in particular
+# the handling for the scripted special case, which sources
+# the script for some of these variables.
 case $X in
-github|na)
-    PROJECT="$URL"
+github)
+    PROJECT="$TARGET"
     ;;
 "")
-    HOST="`expr \"$URL\" : 'ssh://\([^/]*\)'`"
-    PARENT="`expr \"$URL\" : 'ssh://[^/]*\(/.*\)/'`"
-    PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
+    if [ $# -eq 0 ]
+    then
+        echo "$USAGE" >&2
+        exit 1
+    fi
+    HOST="`expr \"$TARGET\" : 'ssh://\([^/]*\)'`"
+    PARENT="`expr \"$TARGET\" : 'ssh://[^/]*\(/.*\)/'`"
+    PROJECT="`expr \"$TARGET\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
     if [ "$PROJECT" = "" ]
     then
-        PROJECT="`expr \"$URL\" : 'ssh://[^/]*/.*/\([^/.]*$\)'`"
+        PROJECT="`expr \"$TARGET\" : 'ssh://[^/]*/.*/\([^/.]*$\)'`"
     fi
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
     then
-        echo "$PGM: bad repo URL \"$HOST\", giving up" >&2
+        echo "$PGM: bad repo target URL \"$TARGET\", giving up" >&2
         exit 1
     fi
     ;;
 *)
-    PROJECT="$URL"
+    PROJECT="$TARGET"
     eval "case $X in
     $SITES)
         . $BIN/mkgit-$X
         X=''
         ;;
     *)
-        echo \"$PGM: unknown -X argument \\\"$X\\\", giving up\" >&2
+        echo \"$PGM: unknown -X target \\\"$X\\\", giving up\" >&2
         exit 1
         ;;
     esac"
 esac
-case $X in
-na)
+
+# For now, canonicalize target machine repo names to
+# always end in ".git". May revisit later.
+case "$PROJECT" in
+*.git)
     ;;
 *)
-    case "$PROJECT" in
-    "")
-	PROJECT="`basename \"\`pwd\`\"`"
-	case "$PROJECT" in
-	*.git)
-	  ;;
-        *)
-	  PROJECT="$PROJECT".git
-	  ;;
-	esac
-        echo "$PGM: warning: no project name specified, so using $PROJECT" >&2
-	;;
-    *.git)
-        ;;
-    *)
-        PROJECT="$PROJECT".git
-	echo "$PGM: warning: added .git to project" >&2
-	;;
-    esac
+    echo "adding .git to project yielding $PROJECT.git"
+    PROJECT="$PROJECT".git
     ;;
 esac
 
+
+# Find the Git working directory on local machine to be
+# cloned (usually the current directory).
+SRCDIR="."
+if [ $# -eq 2 ]
+then
+    SRCDIR="$2"
+fi
+cd "${SRCDIR}"
+if [ "$?" -ne 0 ]
+then
+    echo "$PGM: could not find git directory ${SRCDIR}" >&2
+    exit 1
+fi
+if [ ! -d ".git" ]
+then
+    echo "$PGM: directory ${SRCDIR} is not a git working directory!" 1>&2
+    exit 1
+fi
+
+# Either execute the special-case code to set up a Github
+# repo, or use the now-established HOST, PARENT and PROJECT
+# to set up a repo using ssh.
 case $X in
 github)
-    if $PUBLIC
+    if $PRIVATE && [ ! -f "$HOME/.githubprivate" ]
     then
-        :
-    else
-	echo "$PGM: cannot create private github repos" >&2
+	echo "$PGM: cannot create private github repos for licensing reasons" >&2
 	exit 1
     fi
     if [ ! -f "$HOME/.githubuser" ] || [ ! -f "$HOME/.githubtoken" ]
@@ -170,23 +199,26 @@ github)
 	cat $MSGTMP >&2
 	exit 1
     fi
-    if curl \
-         -F "login=$GITHUBUSER" \
-         -F "token=$GITHUBTOKEN" \
-	 "https://github.com/api/v2/yaml/repos/show/$GITHUBUSER/$PROJECT" \
-         -F "values[description]=$DESC" >$MSGTMP
+    if $PUBLIC
     then
-	:
-    else
-e	echo "failed to set github description:" >&2
-	cat $MSGTMP >&2
-	exit 1
+        if curl \
+             -F "login=$GITHUBUSER" \
+             -F "token=$GITHUBTOKEN" \
+             "https://github.com/api/v2/yaml/repos/show/$GITHUBUSER/$PROJECT" \
+             -F "values[description]=$DESC" >$MSGTMP
+        then
+            :
+        else
+            echo "failed to set github description:" >&2
+            cat $MSGTMP >&2
+            exit 1
+        fi
     fi
     ;;
 "")
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
     then
-        echo "$USAGE" >&2
+        echo "$PGM: insufficient info to proceed (internal error?)" >&2
         exit 1
     fi
     URL="ssh://${HOST}${PARENT}/${PROJECT}"
@@ -211,31 +243,13 @@ EOF
 	exit 1
     fi
     ;;
-na)
-    ;;
 *)
-    echo "$USAGE" >&2
+    echo "$PGM: internal error: unexpected -X $X" >&2
     exit 1
     ;;
 esac
 
-if [ $# -eq 2 ]
-then
-    GITDIR="$2"
-fi
-
-cd "${GITDIR}"
-if [ "$?" -ne 0 ]
-then
-    echo "$PGM: could not find git directory ${GITDIR}" >&2
-    exit 1
-fi
-if [ ! -d ".git" ]
-then
-    echo "$PGM: directory ${GITDIR} is not a git working directory!" 1>&2
-    exit 1
-fi
-
+# Push the source repo up to the newly-created target repo.
 if git remote add origin "$URL"
 then
   :
