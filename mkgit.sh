@@ -14,7 +14,7 @@ PGM="`basename $0`"
 # They are named mkgit-*.
 BIN="`echo $0 | sed 's=/*[^/]*$=='`"
 case $BIN in '') BIN='.' ;; esac
-SITESCRIPTS="`ls ${BIN} | egrep '^mkgit-'`"
+SITESCRIPTS="`ls \"$BIN\" | egrep '^mkgit-'`"
 # Pipe-separated list of site names. Used both for
 # display and with shell eval.
 SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
@@ -155,15 +155,15 @@ if [ $# -eq 2 ]
 then
     SRCDIR="$2"
 fi
-cd "${SRCDIR}"
+cd "$SRCDIR"
 if [ "$?" -ne 0 ]
 then
-    echo "$PGM: could not find git directory ${SRCDIR}" >&2
+    echo "$PGM: could not find git directory $SRCDIR" >&2
     exit 1
 fi
 if [ ! -d ".git" ]
 then
-    echo "$PGM: directory ${SRCDIR} is not a git working directory!" 1>&2
+    echo "$PGM: directory $SRCDIR is not a git working directory!" 1>&2
     exit 1
 fi
 
@@ -189,7 +189,7 @@ github)
     fi
     GITHUBUSER="`cat $HOME/.githubuser`"
     GITHUBTOKEN="`cat $HOME/.githubtoken`"
-    URL="ssh://git@github.com/$GITHUBUSER/${PROJECT}"
+    URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
     if curl \
@@ -226,16 +226,16 @@ github)
         echo "$PGM: insufficient info to proceed (internal error?)" >&2
         exit 1
     fi
-    URL="ssh://${HOST}${PARENT}/${PROJECT}"
+    URL="ssh://$HOST$PARENT/$PROJECT"
     QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
     PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
     PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-    ssh "${HOST}" <<EOF
+    ssh "$HOST" <<EOF
     cd "${PARENTQ}" &&
     mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&
     git init --bare --shared=group &&
-    if $PUBLIC
+    if ${PUBLIC}
     then
       touch git-daemon-export-ok
       echo "${DESC}" >description
