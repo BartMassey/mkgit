@@ -1,0 +1,130 @@
+.TH MKGIT 1 "2012/06/03"
+.SH NAME
+mkgit \- create an upstream git repo and push to it
+.SH SYNOPSIS
+mkgit [\fB-p\fP|\fB-d\fP \fI<desc>\fP]
+  [ \fB-X\fP \fIsite1\fP|...|github [\fI<project>\fP[.git]]
+  | ssh://[\fI<user>\fP@]host/\fI<dir>\fP/\fI<project>\fP[.git]]
+  [\fI<source-dir>\fP]
+.SH DESCRIPTION
+.PP
+The
+.B mkgit
+command is a single-line solution for creating a new
+upstream Git repository as the origin for an existing
+local repository. That is,
+.I mkgit
+will create a new repository at the specified upstream
+location, push the local repository up there, and set the
+local
+.B origin
+and tracking information to point at the new upstream.
+.PP
+The
+.I mkgit
+command operates in one of two basic modes. In "normal"
+mode, the new upstream is specified by means of an ordinary
+SSH URL. In "special" mode, the new upstream is specified
+by a bare keyword argument to the
+.B "-X"
+flag; this both is a handy abbreviation and permits
+special-case handling.
+.SH USAGE
+.PP
+.TP
+.B "-p"
+The resulting upstream will be "private". This means only
+that no special care will be taken to make it readable by
+others; no description will be given, no symlinking will be
+done, etc. One of
+.B "-p"
+and
+.B "-d"
+must always be specified.
+.TP
+.BI "-d" " <desc>"
+The resulting upstream will be "public". This means only
+that a bit of care will be taken to make it readable by
+others; the suppplied description will be given to the
+repository, any implied symlinking will be
+done, etc. One of
+.B -p
+and
+.B -d
+must always be specified.
+.TP
+.BI "-X" " <site>"
+Instead of requiring a full URL, the
+.B "-X"
+flag allows specification of a
+.I "<site>"
+keyword.
+.PP
+The keyword "github" is special, and allows automatic
+creation of GitHub repositories. For this to work, the
+user will have to have files in
+.I "$HOME"
+called
+.I ".githubuser"
+and
+.I ".githubtoken".
+The
+.I ".githubuser"
+file should contain a single line giving the GitHub username
+of the target user. The
+.I ".githubtoken"
+file should contain a single line giving the GitHub "access
+token" needed by the GitHub repository API to create a repo.
+Note that this token-based interface is deprecated in favor
+of an OAuth2-based authorization solution;
+.I mkgit
+needs to be updated to use this instead.
+The user may also have a
+.I ".githubprivate"
+file, whose existence indicates paid membership
+in GitHub and thus permission to create private
+repositories there.
+.PP
+Other keywords correspond to access scripts. A keyword of
+.IR foo ,
+for example, would correspond to an access script
+of
+.IR "mkgit-foo" .
+Access scripts are always located in the same directory
+as
+.I mkgit
+itself. These scripts are sourced by
+.IR mkgit ,
+and can set variables and execute shell code
+to facilitate setting up a repository.
+.SH EXAMPLES
+.PP
+.nf
+
+mkgit -d 'example repo' -X github
+
+.fi
+Sets up a repository on GitHub. The target repository name is
+inferred from the source repository name, which is assumed
+to be the current directory.
+.nf
+
+mkgit -p ssh://remote.example.com/var/cache/git/project.git /tmp/project
+
+.fi
+Sets up a repository on the machine
+.I "remote.example.com."
+The repository is named
+.IR "project.git" ,
+is sourced from the Git working directory
+.IR "/tmp/project" ,
+and is not made public.
+.\"
+.SH BUGS
+.PP
+The GitHub authentication needs updating.
+.PP
+The implementation has not been thoroughly tested.
+.\"
+.SH AUTHOR
+Bart Massey \fI<bart@cs.pdx.edu>\fP
