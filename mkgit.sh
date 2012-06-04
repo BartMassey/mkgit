@@ -226,16 +226,23 @@ github)
         echo "$PGM: insufficient info to proceed (internal error?)" >&2
         exit 1
     fi
-    URL="ssh://${HOST}${PARENT}/${PROJECT}"
+    case "$SSH_AUTH_SOCK" in
+    "")
+        trap "kill \$SSH_AGENT_PID" 0 1 2 3 15
+        eval `ssh-agent -s`
+        ;;
+    esac
+    ssh-add "$HOST"
+    URL="ssh://$HOST$PARENT/$PROJECT"
     QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
     PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
     PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-    ssh "${HOST}" <<EOF
+    ssh "$HOST" <<EOF
     cd "${PARENTQ}" &&
     mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&
     git init --bare --shared=group &&
-    if $PUBLIC
+    if ${PUBLIC}
     then
       touch git-daemon-export-ok
       echo "${DESC}" >description
