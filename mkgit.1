@@ -62,24 +62,36 @@ flag allows specification of a
 keyword.
 .PP
 The keyword "github" is special, and allows automatic
-creation of GitHub repositories. For this to work, the
-user will have to have files in
+creation of GitHub repositories using the GitHub API v3
+with OAuth2. For this to work, the
+user will have to have a file in
 .I "$HOME"
 called
-.I ".githubuser"
-and
-.I ".githubtoken".
+.IR ".githubuser" .
 The
 .I ".githubuser"
 file should contain a single line giving the GitHub username
-of the target user. The
-.I ".githubtoken"
-file should contain a single line giving the GitHub "access
-token" needed by the GitHub repository API to create a repo.
-Note that this token-based interface is deprecated in favor
-of an OAuth2-based authorization solution;
-.I mkgit
-needs to be updated to use this instead.
+of the target user.
+.PP
+The user may also have a
+.I ".github-oauthtoken"
+file in their home directory, containing a single line
+giving the GitHub "access token" needed by
+the GitHub repository API v3 to create a repo.
+If the user does not have a
+.I ".github-oauthtoken"
+file, they will be prompted for their GitHub password and
+a token will be created using the GitHub authentication
+API v3 and stored for them; a
+.I ".github-oauthid"
+containing the token id will be stored as well.
+The created token will be visible in the "Applications"
+section of the GitHub website as "mkgit (API)". The
+.I ".github-oauthtoken"
+and
+.I ".github-oauthid"
+files are portable across machines.
+.PP
 The user may also have a
 .I ".githubprivate"
 file, whose existence indicates paid membership
@@ -102,7 +114,7 @@ to facilitate setting up a repository.
 .PP
 .nf
 
-mkgit -d 'example repo' -X github
+    mkgit -d 'example repo' -X github
 
 .fi
 Sets up a repository on GitHub. The target repository name is
@@ -110,7 +122,7 @@ inferred from the source repository name, which is assumed
 to be the current directory.
 .nf
 
-mkgit -p ssh://remote.example.com/var/cache/git/project.git /tmp/project
+    mkgit -p ssh://remote.example.com/var/cache/git/project.git /tmp/project
 
 .fi
 Sets up a repository on the machine
@@ -122,8 +134,6 @@ is sourced from the Git working directory
 and is not made public.
 .\"
 .SH BUGS
-.PP
-The GitHub authentication needs updating.
 .PP
 The implementation has not been thoroughly tested.
 .\"
