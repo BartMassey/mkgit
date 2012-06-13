@@ -197,6 +197,13 @@ github)
       $2=="\"token\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthtoken"; }
       $2=="\"id\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthid"; }
       ' HOME="$HOME"
+      if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthtoken" ]
+      then
+          echo "$PGM: failed to get a GitHub OAuth2 authorization token" >&2
+          exit 1
+      fi
+      chmod 0600 "$HOME/.github-oauthtoken"
+      chmod 0600 "$HOME/.github-oauthid"
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     OPTIONAL_DESCRIPTION=""
@@ -213,7 +220,7 @@ github)
               \"user_secret\": \"$GITHUBTOKEN\",
               \"name\": \"$PROJECT\",
               $OPTIONAL_DESCRIPTION
-              \"has_wiki\": false }"
+              \"has_wiki\": false }" \
         https://api.github.com/user/repos >$MSGTMP
     then
 	:
