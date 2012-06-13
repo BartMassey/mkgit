@@ -11,8 +11,7 @@ Options include: "magic -X modes" customizable for
 particular upstreams; public or private repositories; and a
 bunch of clever defaulting. In particular, the "-X github"
 switch is convenient for pushing there: it uses the GitHub
-API to create the new repo before pushing. Say "mkgit -h"
-for details on all of this.
+API v3 with OAuth2 to create the new repo before pushing.
 
 The "magic -X modes" are customized by putting site variable
 definitions in mkgit-<site> in the same bin directory as
