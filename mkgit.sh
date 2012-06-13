@@ -172,31 +172,49 @@ fi
 # to set up a repo using ssh.
 case $X in
 github)
-    if $PRIVATE && [ ! -f "$HOME/.githubprivate" ]
-    then
-	echo "$PGM: cannot create private github repos for licensing reasons" >&2
-	exit 1
-    fi
-    if [ ! -f "$HOME/.githubuser" ] || [ ! -f "$HOME/.githubtoken" ]
-    then
-	echo "$PGM: need \$HOME/.githubuser and \$HOME/.githubtoken" >&2
-	exit 1
-    fi
     if echo "$PROJECT" | grep / >/dev/null
     then
         echo "$PGM: error: GitHub name should not be a pathname" >&2
         exit 1
     fi
+    if $PRIVATE && [ ! -f "$HOME/.githubprivate" ]
+    then
+	echo "$PGM: cannot create private github repos for licensing reasons" >&2
+	exit 1
+    fi
+    if [ ! -f "$HOME/.githubuser" ]
+    then
+	echo "$PGM: need \$HOME/.githubuser" >&2
+	exit 1
+    fi
     GITHUBUSER="`cat $HOME/.githubuser`"
-    GITHUBTOKEN="`cat $HOME/.githubtoken`"
-    URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
+    if [ ! -f "$HOME/.github-oauthtoken" ]
+    then
+      curl -u "$GITHUBUSER" \
+        -d '{ "scopes": [ "repo" ], "note": "mkgit" }' \
+        https://api.github.com/authorizations |
+      awk -F '[:, ]+' '
+      $2=="\"token\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthtoken"; }
+      $2=="\"id\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthid"; }
+      ' HOME="$HOME"
+    fi
+    GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
+    OPTIONAL_DESCRIPTION=""
+    if $PUBLIC
+    then
+        OPTIONAL_DESCRIPTION="
+              \"description\": \"$DESC\",
+"
+    fi
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
-    if curl \
-         -F "login=$GITHUBUSER" \
-         -F "token=$GITHUBTOKEN" \
-	 https://github.com/api/v2/yaml/repos/create \
-         -F "name=$PROJECT" >$MSGTMP
+    if curl -H "Authorization: token $GITHUBTOKEN" \
+        -d "{ \"user\": \"$GITHUBUSER\",
+              \"user_secret\": \"$GITHUBTOKEN\",
+              \"name\": \"$PROJECT\",
+              $OPTIONAL_DESCRIPTION
+              \"has_wiki\": false }"
+        https://api.github.com/user/repos >$MSGTMP
     then
 	:
     else
@@ -204,21 +222,7 @@ github)
 	cat $MSGTMP >&2
 	exit 1
     fi
-    if $PUBLIC
-    then
-        if curl \
-             -F "login=$GITHUBUSER" \
-             -F "token=$GITHUBTOKEN" \
-             "https://github.com/api/v2/yaml/repos/show/$GITHUBUSER/$PROJECT" \
-             -F "values[description]=$DESC" >$MSGTMP
-        then
-            :
-        else
-            echo "failed to set github description:" >&2
-            cat $MSGTMP >&2
-            exit 1
-        fi
-    fi
+    URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
     ;;
 "")
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
