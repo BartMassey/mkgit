@@ -190,20 +190,20 @@ github)
     GITHUBUSER="`cat $HOME/.githubuser`"
     if [ ! -f "$HOME/.github-oauthtoken" ]
     then
-      curl -u "$GITHUBUSER" \
-        -d '{ "scopes": [ "repo" ], "note": "mkgit" }' \
-        https://api.github.com/authorizations |
-      awk -F '[:, ]+' '
-      $2=="\"token\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthtoken"; }
-      $2=="\"id\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthid"; }
-      ' HOME="$HOME"
-      if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthtoken" ]
-      then
-          echo "$PGM: failed to get a GitHub OAuth2 authorization token" >&2
-          exit 1
-      fi
-      chmod 0600 "$HOME/.github-oauthtoken"
-      chmod 0600 "$HOME/.github-oauthid"
+        curl -u "$GITHUBUSER" \
+          -d '{ "scopes": [ "repo" ], "note": "mkgit" }' \
+          https://api.github.com/authorizations |
+        awk -F '[:, ]+' '
+        $2=="\"token\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthtoken"; }
+        $2=="\"id\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthid"; }
+        ' HOME="$HOME"
+        if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthtoken" ]
+        then
+            echo "$PGM: failed to get a GitHub OAuth2 authorization token" >&2
+            exit 1
+        fi
+        chmod 0600 "$HOME/.github-oauthtoken"
+        chmod 0600 "$HOME/.github-oauthid"
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     OPTIONAL_DESCRIPTION=""
@@ -248,9 +248,10 @@ github)
     git init --bare --shared=group &&
     if ${PUBLIC}
     then
-      touch git-daemon-export-ok
-      echo "${DESC}" >description
-      [ "${REPOLINK}" != "" ] && ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
+        touch git-daemon-export-ok
+        echo "${DESC}" >description
+        [ "${REPOLINK}" != "" ] &&
+          ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
     fi
 EOF
     if [ "$?" -ne 0 ]
@@ -268,11 +269,11 @@ esac
 # Push the source repo up to the newly-created target repo.
 if git remote add origin "$URL"
 then
-  :
+    :
 else
-  echo "$PGM: warning: updating remote"
-  git remote rm origin
-  git remote add origin "$URL"
+    echo "$PGM: warning: updating remote"
+    git remote rm origin
+    git remote add origin "$URL"
 fi
 git push -u origin master
 if [ "$?" -ne 0 ]
