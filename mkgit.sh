@@ -47,6 +47,7 @@ do
     -d)
         PUBLIC=true
 	DESC="$2"
+	ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
 	shift 2
 	;;
     -p)
@@ -210,7 +211,7 @@ github)
     if $PUBLIC
     then
         OPTIONAL_DESCRIPTION="
-              \"description\": \"$DESC\",
+              \"description\": \"$ESCDESC\",
 "
     fi
     MSGTMP="/tmp/mkgit-curlmsg.$$"
