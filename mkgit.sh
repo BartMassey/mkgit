@@ -251,8 +251,10 @@ github)
     then
         touch git-daemon-export-ok
         echo "${DESC}" >description
-        [ "${REPOLINK}" != "" ] &&
-          ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
+        if [ "${REPOLINK}" != "" ]
+        then
+            ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
+        fi
     fi
 EOF
     if [ "$?" -ne 0 ]
