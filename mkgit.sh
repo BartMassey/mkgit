@@ -17,7 +17,7 @@ case $BIN in '') BIN='.' ;; esac
 SITESCRIPTS="`ls \"$BIN\" | egrep '^mkgit-'`"
 # Pipe-separated list of site names. Used both for
 # display and with shell eval.
-SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|='`"
+SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|=g'`"
 
 USAGE="$PGM: usage:
   $PGM [-p|-d <desc>]
