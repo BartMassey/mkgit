@@ -191,16 +191,16 @@ github)
     GITHUBUSER="`cat $HOME/.githubuser`"
     if [ ! -f "$HOME/.github-oauthtoken" ]
     then
-        resp=$(curl -i -u "$GITHUBUSER" \
-          -d '{ "scopes": [ "repo" ], "note": "mkgit" }' \
-          https://api.github.com/authorizations)
+        resp="`curl -i -u "$GITHUBUSER" \
+          -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
+          https://api.github.com/authorizations`"
         if echo $resp | grep "X-GitHub-OTP: required;" 
         then
             echo "two-factor authentication enabled"
             read -p "Enter authentication code: " code
-            resp=$(curl -i -u "$GITHUBUSER" -H "X-GitHub-OTP: $code;"\
-              -d '{ "scopes": [ "repo" ], "note": "mkgit" }'\
-              https://api.github.com/authorizations)
+            resp="`curl -i -u "$GITHUBUSER" -H "X-GitHub-OTP: $code;"\
+              -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }'\
+              https://api.github.com/authorizations`"
             echo $resp | sed "s/.*\"token\": \"\(.[^\"]*\)\".*/\1/" > ~/.github-oauthtoken
             echo $resp | sed "s/.*\"id\": \(.[^,]*\).*/\1/" > ~/.github-oauthid
         else
