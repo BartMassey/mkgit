@@ -253,15 +253,15 @@ github)
     QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
     PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
     PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-    ssh "$HOST" <<EOF
+    ssh -x "$HOST" sh <<EOF
     cd "${PARENTQ}" &&
     mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&
     git init --bare --shared=group &&
     if ${PUBLIC}
     then
-        touch git-daemon-export-ok
-        echo "${DESC}" >description
+        touch git-daemon-export-ok &&
+        echo "${DESC}" >description &&
         if [ "${REPOLINK}" != "" ]
         then
             ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
