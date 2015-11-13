@@ -1,11 +1,10 @@
 #!/bin/sh
-# Copyright © 2009 Bart Massey
-# ALL RIGHTS RESERVED
-#
-# This program is released under the MIT license
-# See http://opensource.org/licenses/mit-license.php for
-# licensing information
-#
+# Copyright © 2012 Bart Massey
+# [This program is licensed under the "MIT License"]
+# Please see the file COPYING in the source
+# distribution of this software for license terms.
+
+# Apply a license to files of an open source program.
 # Loosely based on an earlier script by Julian Kongslie
 
 PGM="`basename $0`"

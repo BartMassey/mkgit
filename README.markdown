@@ -19,6 +19,5 @@ mkgit. See mkgit-big-site and mkgit-little-site for
 examples. All of this is fragile and a bit experimental:
 patches welcome.
 
-This work is under an MIT license. See
-[opensource.org](http://opensource.org/licenses/mit-license.php)
-for licensing information.
+This work is under the "MIT license". See the file COPYING
+in the source distribution for licensing information.
