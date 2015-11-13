@@ -37,22 +37,22 @@ special-case handling.
 The resulting upstream will be "private". This means only
 that no special care will be taken to make it readable by
 others; no description will be given, no symlinking will be
-done, etc. One of
-.B "-p"
-and
-.B "-d"
-must always be specified.
+done, etc. Compare with
+.BR "-d" .
 .TP
 .BI "-d" " <desc>"
 The resulting upstream will be "public". This means only
 that a bit of care will be taken to make it readable by
 others; the suppplied description will be given to the
 repository, any implied symlinking will be
-done, etc. One of
+done, etc. If neither
 .B -p
-and
+nor
 .B -d
-must always be specified.
+is specified,
+.B -d
+will be assumed and the description will be automatically taken from
+the initial commit on the master branch.
 .TP
 .BI "-X" " <site>"
 Instead of requiring a full URL, the

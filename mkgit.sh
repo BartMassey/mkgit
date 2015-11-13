@@ -79,10 +79,17 @@ true:true)
     exit 1
     ;;
 false:false)
-    echo "$PGM: neither public (-d <desc>) nor private (-p) was specified" >&2
-    exit 1
+    # Make it public by default and dig the description out of
+    # the initial git commit.
+    PUBLIC=true
+    DESC="`git log --pretty="%s" master | tail -1`"
     ;;
 esac
+
+if $PUBLIC
+then
+    ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
+fi
 
 # Parse and rearrange to try to get things in a reasonable
 # order.
