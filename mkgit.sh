@@ -181,35 +181,41 @@ github)
 	echo "$PGM: cannot create private github repos for licensing reasons" >&2
 	exit 1
     fi
-    if [ ! -f "$HOME/.githubuser" ]
+    GITHUBUSER="`cat $HOME/.githubuser`"
+    if [ $? -ne 0 ]
     then
 	echo "$PGM: need \$HOME/.githubuser" >&2
 	exit 1
     fi
-    GITHUBUSER="`cat $HOME/.githubuser`"
-    if [ ! -f "$HOME/.github-oauthtoken" ]
+    if [ ! -s "$HOME/.github-oauthid" ] || [ ! -s "$HOME/.github-oauthtoken" ]
     then
-        resp="`curl -i -u "$GITHUBUSER" \
+        RESP="`curl -f -i -u \"$GITHUBUSER\" \
           -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
           https://api.github.com/authorizations`"
-        if echo $resp | grep "X-GitHub-OTP: required;" 
+        if [ $? -ne 0 ]
         then
-            echo "two-factor authentication enabled"
-            read -p "Enter authentication code: " code
-            resp="`curl -i -u "$GITHUBUSER" -H "X-GitHub-OTP: $code;"\
-              -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }'\
-              https://api.github.com/authorizations`"
-            echo $resp | sed "s/.*\"token\": \"\(.[^\"]*\)\".*/\1/" > ~/.github-oauthtoken
-            echo $resp | sed "s/.*\"id\": \(.[^,]*\).*/\1/" > ~/.github-oauthid
-        else
-            echo $resp | awk -F '[:, ]+' '
-            $2=="\"token\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthtoken"; }
-            $2=="\"id\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthid"; }
-            ' HOME="$HOME"
+            echo "Github authentication failed" >&2
+            exit 1
         fi
-        if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthtoken" ]
+        if echo "$RESP" | grep -q "X-GitHub-OTP: required;" 
+        then
+            echo "two-factor authentication enabled" >&2 &&
+            read -p "Enter authentication code: " CODE >&2 &&
+            RESP2="`curl -f -i -u \"$GITHUBUSER\" -H \"X-GitHub-OTP: $CODE;\" \
+              -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
+              https://api.github.com/authorizations`" &&
+            echo "$RESP2" | jq -r .token > $HOME/.github-oauthtoken &&
+            echo "$RESP2" | jq -r .id > $HOME/.github-oauthid
+        else
+            echo "$RESP" | jq -r .token > $HOME/.github-oauthtoken &&
+            echo "$RESP" | jq -r .id > $HOME/.github-oauthid
+        fi
+        if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthid" ] ||
+                           [ ! -s "$HOME/.github-oauthtoken" ]
         then
             echo "$PGM: failed to get a GitHub OAuth2 authorization token" >&2
+            rm -f "$HOME/.github-oauthtoken"
+            rm -f "$HOME/.github-oauthid"
             exit 1
         fi
         chmod 0600 "$HOME/.github-oauthtoken"
@@ -217,16 +223,15 @@ github)
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
-    if curl -f -H "Authorization: token $GITHUBTOKEN" \
-        -d "{ \"user\": \"$GITHUBUSER\",
-              \"user_secret\": \"$GITHUBTOKEN\",
-              \"name\": \"$PROJECT\",
-              \"description\": \"$ESCDESC\" }" \
-        https://api.github.com/user/repos >/dev/null
+    curl -f -H "Authorization: token $GITHUBTOKEN" \
+         -d "{ \"user\": \"$GITHUBUSER\",
+               \"user_secret\": \"$GITHUBTOKEN\",
+               \"name\": \"$PROJECT\",
+               \"description\": \"$ESCDESC\" }" \
+         https://api.github.com/user/repos >/dev/null
+    if [ $? -ne 0 ]
     then
-	:
-    else
-	echo "failed to create github repository: curl error" >&2
+	echo "failed to create github repository: API error" >&2
 	exit 1
     fi
     URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
@@ -237,16 +242,35 @@ gitlab)
         echo "$PGM: error: Gitlab name should not be a pathname" >&2
         exit 1
     fi
-    if [ ! -f "$HOME/.gitlabuser" ]
+    GITLABUSER="`cat $HOME/.gitlabuser`"
+    if [ $? -ne 0 ]
     then
 	echo "$PGM: need \$HOME/.gitlabuser" >&2
 	exit 1
     fi
-    GITLABUSER="`cat $HOME/.gitlabuser`"
     if [ ! -f "$HOME/.gitlab-token" ]
     then
-        echo "Need $HOME/.gitlab-token ; see Gitlab profile" >&2
-        exit 1
+        stty -echo
+        read -p "Gitlab password: " GITLAB_PASSWORD
+        stty echo
+        echo ""
+        RESP="`curl -f \
+          --data \"login=$GITLABUSER\" \
+          --data-urlencode \"password=$GITLAB_PASSWORD\" \
+          https://gitlab.com/api/v3/session`"
+        if [ $? -ne 0 ]
+        then
+            echo "Gitlab authentication failed" >&2
+            exit 1
+        fi
+        echo "$RESP" | jq -r .private_token > $HOME/.gitlab-token
+        if [ $? -ne 0 ] || [ ! -s "$HOME/.gitlab-token" ]
+        then
+            echo "$PGM: failed to get a Gitlab private token" >&2
+            rm -f "$HOME/.gitlab-token"
+            exit 1
+        fi
+        chmod 0600 "$HOME/.gitlab-token"
     fi
     GITLABTOKEN="`cat $HOME/.gitlab-token`"
     PROJECTBASE="`basename \"$PROJECT\" .git`"
