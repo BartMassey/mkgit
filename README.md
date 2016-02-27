@@ -1,5 +1,5 @@
 # mkgit
-Copyright &copy; 2012 Bart Massey
+Copyright (c) 2012 Bart Massey
 
 This script, based on an idea by Julian Kongslie, creates a
 new git repository on an upstream host and pushes the
@@ -10,8 +10,8 @@ ssh access to upstream to use this.
 Options include: "magic -X modes" customizable for
 particular upstreams; public or private repositories; and a
 bunch of clever defaulting. In particular, the "-X github"
-switch is convenient for pushing there: it uses the GitHub
-API v3 with OAuth2 to create the new repo before pushing.
+and "-X gitlab" switches are convenient for pushing to these
+places: see the manual page for details.
 
 The "magic -X modes" are customized by putting site variable
 definitions in mkgit-<site> in the same bin directory as

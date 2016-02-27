@@ -20,7 +20,7 @@ SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|=g'`"
 
 USAGE="$PGM: usage:
   $PGM [-p|-d <desc>]
-  [ -X ${SITES:+$SITES|}github [<project>[.git]]
+  [ -X ${SITES:+$SITES|}github|gitlab [<project>[.git]]
   | ssh://[<user>@]host/<dir>/<project>[.git]]
   [<source-dir>]"
 
@@ -29,8 +29,7 @@ REPOLINK=""
 # Repos must be specified as either "public" (will be made
 # visible to all) or "private" (will be made visible only
 # to those with commit access).
-PRIVATE=false
-PUBLIC=false
+PUBLIC=true
 # Optional "special" site name that receives
 # custom handling.
 X=""
@@ -44,13 +43,11 @@ do
 	shift 2
 	;;
     -d)
-        PUBLIC=true
 	DESC="$2"
-	ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
 	shift 2
 	;;
     -p)
-        PRIVATE=true
+        PUBLIC=false
 	shift
 	;;
     -*)
@@ -71,24 +68,19 @@ then
     exit 1
 fi
 
-# Check for screwups with public/private.
-case $PUBLIC:$PRIVATE in
-true:true)
-    echo "$PGM: both public (-d <desc>) and private (-p) were specified" >&2
-    exit 1
-    ;;
-false:false)
-    # Make it public by default and dig the description out of
+# Finalize the project description.
+case "$DESC" in
+  "")    
+    # If no description, dig the description out of
     # the initial git commit.
-    PUBLIC=true
     DESC="`git log --pretty="%s" master | tail -1`"
+    if [ $? -ne 0 ]
+    then
+        echo "$PGM: could not get a project description" >&2
+        exit 1
+    fi
     ;;
 esac
-
-if $PUBLIC
-then
-    ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
-fi
 
 # Parse and rearrange to try to get things in a reasonable
 # order.
@@ -107,7 +99,7 @@ fi
 # the handling for the scripted special case, which sources
 # the script for some of these variables.
 case $X in
-github)
+github|gitlab)
     PROJECT="$TARGET"
     ;;
 "")
@@ -174,80 +166,126 @@ then
     exit 1
 fi
 
-# Either execute the special-case code to set up a Github
-# repo, or use the now-established HOST, PARENT and PROJECT
-# to set up a repo using ssh.
+# Either execute the special-case code to set up a Github or
+# Gitlab repo, or use the now-established HOST, PARENT and
+# PROJECT to set up a repo using ssh.
 case $X in
 github)
     if echo "$PROJECT" | grep / >/dev/null
     then
-        echo "$PGM: error: GitHub name should not be a pathname" >&2
+        echo "$PGM: error: Github name should not be a pathname" >&2
         exit 1
     fi
-    if $PRIVATE && [ ! -f "$HOME/.githubprivate" ]
+    if ! $PUBLIC && [ ! -f "$HOME/.githubprivate" ]
     then
 	echo "$PGM: cannot create private github repos for licensing reasons" >&2
 	exit 1
     fi
-    if [ ! -f "$HOME/.githubuser" ]
+    GITHUBUSER="`cat $HOME/.githubuser`"
+    if [ $? -ne 0 ]
     then
 	echo "$PGM: need \$HOME/.githubuser" >&2
 	exit 1
     fi
-    GITHUBUSER="`cat $HOME/.githubuser`"
-    if [ ! -f "$HOME/.github-oauthtoken" ]
+    if [ ! -s "$HOME/.github-oauthid" ] || [ ! -s "$HOME/.github-oauthtoken" ]
     then
-        resp="`curl -i -u "$GITHUBUSER" \
+        RESP="`curl -f -i -u \"$GITHUBUSER\" \
           -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
           https://api.github.com/authorizations`"
-        if echo $resp | grep "X-GitHub-OTP: required;" 
+        if [ $? -ne 0 ]
         then
-            echo "two-factor authentication enabled"
-            read -p "Enter authentication code: " code
-            resp="`curl -i -u "$GITHUBUSER" -H "X-GitHub-OTP: $code;"\
-              -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }'\
-              https://api.github.com/authorizations`"
-            echo $resp | sed "s/.*\"token\": \"\(.[^\"]*\)\".*/\1/" > ~/.github-oauthtoken
-            echo $resp | sed "s/.*\"id\": \(.[^,]*\).*/\1/" > ~/.github-oauthid
-        else
-            echo $resp | awk -F '[:, ]+' '
-            $2=="\"token\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthtoken"; }
-            $2=="\"id\"" { print substr($3, 2, length($3) - 2) > HOME "/.github-oauthid"; }
-            ' HOME="$HOME"
+            echo "Github authentication failed" >&2
+            exit 1
         fi
-        if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthtoken" ]
+        if echo "$RESP" | grep -q "X-GitHub-OTP: required;" 
+        then
+            echo "two-factor authentication enabled" >&2 &&
+            read -p "Enter authentication code: " CODE >&2 &&
+            RESP2="`curl -f -i -u \"$GITHUBUSER\" -H \"X-GitHub-OTP: $CODE;\" \
+              -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
+              https://api.github.com/authorizations`" &&
+            echo "$RESP2" | jq -r .token > $HOME/.github-oauthtoken &&
+            echo "$RESP2" | jq -r .id > $HOME/.github-oauthid
+        else
+            echo "$RESP" | jq -r .token > $HOME/.github-oauthtoken &&
+            echo "$RESP" | jq -r .id > $HOME/.github-oauthid
+        fi
+        if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthid" ] ||
+                           [ ! -s "$HOME/.github-oauthtoken" ]
         then
             echo "$PGM: failed to get a GitHub OAuth2 authorization token" >&2
+            rm -f "$HOME/.github-oauthtoken"
+            rm -f "$HOME/.github-oauthid"
             exit 1
         fi
         chmod 0600 "$HOME/.github-oauthtoken"
         chmod 0600 "$HOME/.github-oauthid"
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
-    OPTIONAL_DESCRIPTION=""
-    if $PUBLIC
+    ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
+    curl -f -H "Authorization: token $GITHUBTOKEN" \
+         -d "{ \"user\": \"$GITHUBUSER\",
+               \"user_secret\": \"$GITHUBTOKEN\",
+               \"name\": \"$PROJECT\",
+               \"description\": \"$ESCDESC\" }" \
+         https://api.github.com/user/repos >/dev/null
+    if [ $? -ne 0 ]
     then
-        OPTIONAL_DESCRIPTION="
-              \"description\": \"$ESCDESC\",
-"
-    fi
-    MSGTMP="/tmp/mkgit-curlmsg.$$"
-    trap "rm -f $MSGTMP" 0 1 2 3 15
-    if curl -H "Authorization: token $GITHUBTOKEN" \
-        -d "{ \"user\": \"$GITHUBUSER\",
-              \"user_secret\": \"$GITHUBTOKEN\",
-              \"name\": \"$PROJECT\",
-              $OPTIONAL_DESCRIPTION
-              \"has_wiki\": false }" \
-        https://api.github.com/user/repos >$MSGTMP
-    then
-	:
-    else
-	echo "failed to create github repository:" >&2
-	cat $MSGTMP >&2
+	echo "failed to create github repository: API error" >&2
 	exit 1
     fi
     URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
+    ;;
+gitlab)
+    if echo "$PROJECT" | grep / >/dev/null
+    then
+        echo "$PGM: error: Gitlab name should not be a pathname" >&2
+        exit 1
+    fi
+    GITLABUSER="`cat $HOME/.gitlabuser`"
+    if [ $? -ne 0 ]
+    then
+	echo "$PGM: need \$HOME/.gitlabuser" >&2
+	exit 1
+    fi
+    if [ ! -f "$HOME/.gitlab-token" ]
+    then
+        stty -echo
+        read -p "Gitlab password: " GITLAB_PASSWORD
+        stty echo
+        echo ""
+        RESP="`curl -f \
+          --data \"login=$GITLABUSER\" \
+          --data-urlencode \"password=$GITLAB_PASSWORD\" \
+          https://gitlab.com/api/v3/session`"
+        if [ $? -ne 0 ]
+        then
+            echo "Gitlab authentication failed" >&2
+            exit 1
+        fi
+        echo "$RESP" | jq -r .private_token > $HOME/.gitlab-token
+        if [ $? -ne 0 ] || [ ! -s "$HOME/.gitlab-token" ]
+        then
+            echo "$PGM: failed to get a Gitlab private token" >&2
+            rm -f "$HOME/.gitlab-token"
+            exit 1
+        fi
+        chmod 0600 "$HOME/.gitlab-token"
+    fi
+    GITLABTOKEN="`cat $HOME/.gitlab-token`"
+    PROJECTBASE="`basename \"$PROJECT\" .git`"
+    if curl -f -H "PRIVATE-TOKEN: $GITLABTOKEN" \
+        --data "name=$PROJECTBASE" \
+        --data "public=$PUBLIC" \
+        --data-urlencode "description=$DESC" \
+        https://gitlab.com/api/v3/projects >/dev/null
+    then
+        :
+    else
+	echo "failed to create gitlab repository: curl error" >&2
+	exit 1
+    fi
+    URL="ssh://git@gitlab.com/$GITLABUSER/$PROJECT"
     ;;
 "")
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
@@ -264,10 +302,10 @@ github)
     mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&
     git init --bare --shared=group &&
+    echo "${DESC}" >description &&
     if ${PUBLIC}
     then
         touch git-daemon-export-ok &&
-        echo "${DESC}" >description &&
         if [ "${REPOLINK}" != "" ]
         then
             ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
