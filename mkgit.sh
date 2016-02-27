@@ -250,9 +250,13 @@ gitlab)
     fi
     if [ ! -f "$HOME/.gitlab-token" ]
     then
+        # XXX The horrors of prompting for a password.
+        # http://stackoverflow.com/a/28393320/364875
+        trap "stty echo" 0
         stty -echo
-        read -p "Gitlab password: " GITLAB_PASSWORD
+        read -r -p "Gitlab password: " GITLAB_PASSWORD
         stty echo
+        trap - 0
         echo ""
         RESP="`curl -f \
           --data \"login=$GITLABUSER\" \
