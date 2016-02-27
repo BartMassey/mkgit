@@ -81,7 +81,6 @@ case "$DESC" in
     fi
     ;;
 esac
-ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
 
 # Parse and rearrange to try to get things in a reasonable
 # order.
@@ -217,20 +216,17 @@ github)
         chmod 0600 "$HOME/.github-oauthid"
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
-    MSGTMP="/tmp/mkgit-curlmsg.$$"
-    trap "rm -f $MSGTMP" 0 1 2 3 15
-    if curl -H "Authorization: token $GITHUBTOKEN" \
+    ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
+    if curl -f -H "Authorization: token $GITHUBTOKEN" \
         -d "{ \"user\": \"$GITHUBUSER\",
               \"user_secret\": \"$GITHUBTOKEN\",
               \"name\": \"$PROJECT\",
-              \"description\": \"$ESCDESC\",
-              \"has_wiki\": false }" \
-        https://api.github.com/user/repos >$MSGTMP
+              \"description\": \"$ESCDESC\" }" \
+        https://api.github.com/user/repos >/dev/null
     then
 	:
     else
-	echo "failed to create github repository:" >&2
-	cat $MSGTMP >&2
+	echo "failed to create github repository: curl error" >&2
 	exit 1
     fi
     URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
@@ -253,21 +249,16 @@ gitlab)
         exit 1
     fi
     GITLABTOKEN="`cat $HOME/.gitlab-token`"
-    MSGTMP="/tmp/mkgit-curlmsg.$$"
-    trap "rm -f $MSGTMP" 0 1 2 3 15
-    if curl -H "PRIVATE-TOKEN: $GITLABTOKEN" \
-        -d "{ \"name\": \"$PROJECT\",
-              \"public\": $PUBLIC,
-              \"description\": \"$ESCDESC\",
-              \"issues_enabled\": true,
-              \"merge_requests_enabled\": true,
-              \"wiki_enabled\": false }" \
-        https://gitlab.com/api/v3/projects/user/"$GITLAB_USER" >$MSGTMP
+    PROJECTBASE="`basename \"$PROJECT\" .git`"
+    if curl -f -H "PRIVATE-TOKEN: $GITLABTOKEN" \
+        --data "name=$PROJECTBASE" \
+        --data "public=$PUBLIC" \
+        --data-urlencode "description=$DESC" \
+        https://gitlab.com/api/v3/projects >/dev/null
     then
-	:
+        :
     else
-	echo "failed to create gitlab repository:" >&2
-	cat $MSGTMP >&2
+	echo "failed to create gitlab repository: curl error" >&2
 	exit 1
     fi
     URL="ssh://git@gitlab.com/$GITLABUSER/$PROJECT"
