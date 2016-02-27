@@ -29,7 +29,6 @@ REPOLINK=""
 # Repos must be specified as either "public" (will be made
 # visible to all) or "private" (will be made visible only
 # to those with commit access).
-PRIVATE=false
 PUBLIC=true
 # Optional "special" site name that receives
 # custom handling.
@@ -48,7 +47,6 @@ do
 	shift 2
 	;;
     -p)
-        PRIVATE=true
         PUBLIC=false
 	shift
 	;;
@@ -70,24 +68,19 @@ then
     exit 1
 fi
 
-# Check for screwups with public/private.
-case $PUBLIC:$PRIVATE in
-true:true)
-    echo "$PGM: both public (-d <desc>) and private (-p) were specified" >&2
-    exit 1
-    ;;
-false:false)
-    # Make it public by default and dig the description out of
+# Finalize the project description.
+case "$DESC" in
+  "")    
+    # If no description, dig the description out of
     # the initial git commit.
-    PUBLIC=true
     DESC="`git log --pretty="%s" master | tail -1`"
+    if [ $? -ne 0 ]
+    then
+        echo "$PGM: could not get a project description" >&2
+        exit 1
     ;;
 esac
-
-if $DESC
-then
-    ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
-fi
+ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
 
 # Parse and rearrange to try to get things in a reasonable
 # order.
@@ -183,7 +176,7 @@ github)
         echo "$PGM: error: Github name should not be a pathname" >&2
         exit 1
     fi
-    if $PRIVATE && [ ! -f "$HOME/.githubprivate" ]
+    if ! $PUBLIC && [ ! -f "$HOME/.githubprivate" ]
     then
 	echo "$PGM: cannot create private github repos for licensing reasons" >&2
 	exit 1
@@ -223,20 +216,13 @@ github)
         chmod 0600 "$HOME/.github-oauthid"
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
-    OPTIONAL_DESCRIPTION=""
-    if $DESC
-    then
-        OPTIONAL_DESCRIPTION="
-              \"description\": \"$ESCDESC\",
-"
-    fi
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
     if curl -H "Authorization: token $GITHUBTOKEN" \
         -d "{ \"user\": \"$GITHUBUSER\",
               \"user_secret\": \"$GITHUBTOKEN\",
               \"name\": \"$PROJECT\",
-              $OPTIONAL_DESCRIPTION
+              \"description\": \"$ESCDESC\",
               \"has_wiki\": false }" \
         https://api.github.com/user/repos >$MSGTMP
     then
@@ -265,19 +251,11 @@ gitlab)
         echo "Need $HOME/.gitlab-token ; see Gitlab profile" >&2
         exit 1
     fi
-    OPTIONAL_DESCRIPTION=""
-    if $DESC
-    then
-        OPTIONAL_DESCRIPTION="
-              \"description\": \"$ESCDESC\",
-"
-    fi
     GITLABTOKEN="`cat $HOME/.gitlab-token`"
     MSGTMP="/tmp/mkgit-curlmsg.$$"
     trap "rm -f $MSGTMP" 0 1 2 3 15
     if curl -H "PRIVATE-TOKEN: $GITLABTOKEN" \
         -d "{ \"name\": \"$PROJECT\",
-              $OPTIONAL_DESCRIPTION
               \"public\": $PUBLIC,
               \"description\": \"$ESCDESC\",
               \"issues_enabled\": true,
@@ -308,10 +286,10 @@ gitlab)
     mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&
     git init --bare --shared=group &&
+    echo "${DESC}" >description &&
     if ${PUBLIC}
     then
         touch git-daemon-export-ok &&
-        echo "${DESC}" >description &&
         if [ "${REPOLINK}" != "" ]
         then
             ln -s "${PARENTQ}/${PROJECTQ}" "${REPOLINK}"/.
