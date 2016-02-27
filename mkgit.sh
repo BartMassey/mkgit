@@ -20,7 +20,7 @@ SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|=g'`"
 
 USAGE="$PGM: usage:
   $PGM [-p|-d <desc>]
-  [ -X ${SITES:+$SITES|}github [<project>[.git]]
+  [ -X ${SITES:+$SITES|}github|gitlab [<project>[.git]]
   | ssh://[<user>@]host/<dir>/<project>[.git]]
   [<source-dir>]"
 
@@ -30,7 +30,7 @@ REPOLINK=""
 # visible to all) or "private" (will be made visible only
 # to those with commit access).
 PRIVATE=false
-PUBLIC=false
+PUBLIC=true
 # Optional "special" site name that receives
 # custom handling.
 X=""
@@ -44,13 +44,12 @@ do
 	shift 2
 	;;
     -d)
-        PUBLIC=true
 	DESC="$2"
-	ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
 	shift 2
 	;;
     -p)
         PRIVATE=true
+        PUBLIC=false
 	shift
 	;;
     -*)
@@ -85,7 +84,7 @@ false:false)
     ;;
 esac
 
-if $PUBLIC
+if $DESC
 then
     ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
 fi
@@ -107,7 +106,7 @@ fi
 # the handling for the scripted special case, which sources
 # the script for some of these variables.
 case $X in
-github)
+github|gitlab)
     PROJECT="$TARGET"
     ;;
 "")
@@ -174,14 +173,14 @@ then
     exit 1
 fi
 
-# Either execute the special-case code to set up a Github
-# repo, or use the now-established HOST, PARENT and PROJECT
-# to set up a repo using ssh.
+# Either execute the special-case code to set up a Github or
+# Gitlab repo, or use the now-established HOST, PARENT and
+# PROJECT to set up a repo using ssh.
 case $X in
 github)
     if echo "$PROJECT" | grep / >/dev/null
     then
-        echo "$PGM: error: GitHub name should not be a pathname" >&2
+        echo "$PGM: error: Github name should not be a pathname" >&2
         exit 1
     fi
     if $PRIVATE && [ ! -f "$HOME/.githubprivate" ]
@@ -225,7 +224,7 @@ github)
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     OPTIONAL_DESCRIPTION=""
-    if $PUBLIC
+    if $DESC
     then
         OPTIONAL_DESCRIPTION="
               \"description\": \"$ESCDESC\",
@@ -248,6 +247,51 @@ github)
 	exit 1
     fi
     URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
+    ;;
+gitlab)
+    if echo "$PROJECT" | grep / >/dev/null
+    then
+        echo "$PGM: error: Gitlab name should not be a pathname" >&2
+        exit 1
+    fi
+    if [ ! -f "$HOME/.gitlabuser" ]
+    then
+	echo "$PGM: need \$HOME/.gitlabuser" >&2
+	exit 1
+    fi
+    GITLABUSER="`cat $HOME/.gitlabuser`"
+    if [ ! -f "$HOME/.gitlab-token" ]
+    then
+        echo "Need $HOME/.gitlab-token ; see Gitlab profile" >&2
+        exit 1
+    fi
+    OPTIONAL_DESCRIPTION=""
+    if $DESC
+    then
+        OPTIONAL_DESCRIPTION="
+              \"description\": \"$ESCDESC\",
+"
+    fi
+    GITLABTOKEN="`cat $HOME/.gitlab-token`"
+    MSGTMP="/tmp/mkgit-curlmsg.$$"
+    trap "rm -f $MSGTMP" 0 1 2 3 15
+    if curl -H "PRIVATE-TOKEN: $GITLABTOKEN" \
+        -d "{ \"name\": \"$PROJECT\",
+              $OPTIONAL_DESCRIPTION
+              \"public\": $PUBLIC,
+              \"description\": \"$ESCDESC\",
+              \"issues_enabled\": true,
+              \"merge_requests_enabled\": true,
+              \"wiki_enabled\": false }" \
+        https://gitlab.com/api/v3/projects/user/"$GITLAB_USER" >$MSGTMP
+    then
+	:
+    else
+	echo "failed to create gitlab repository:" >&2
+	cat $MSGTMP >&2
+	exit 1
+    fi
+    URL="ssh://git@gitlab.com/$GITLABUSER/$PROJECT"
     ;;
 "")
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
