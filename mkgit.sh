@@ -78,6 +78,7 @@ case "$DESC" in
     then
         echo "$PGM: could not get a project description" >&2
         exit 1
+    fi
     ;;
 esac
 ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
