@@ -4,7 +4,7 @@
 # Please see the file COPYING in the source
 # distribution of this software for license terms.
 
-# Apply a license to files of an open source program.
+# Create a new upstream git repository.
 # Loosely based on an earlier script by Julian Kongslie
 
 PGM="`basename $0`"
