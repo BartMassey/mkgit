@@ -99,8 +99,14 @@ fi
 # the handling for the scripted special case, which sources
 # the script for some of these variables.
 case $X in
-github|gitlab)
+github*|gitlab)
     PROJECT="$TARGET"
+    case $X in
+        github-*)
+            GITHUBORG="`echo $X | sed 's/github-//'`"
+            X="`echo $X | sed 's/-.*$//'`"
+            ;;
+    esac
     ;;
 "")
     if [ $# -eq 0 ]
@@ -223,18 +229,25 @@ github)
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
+    CREATEURL=https://api.github.com/user/repos
+    if [ "$GITHUBORG" = "" ]
+    then
+        GITHUBORG=$GITHUBUSER
+    else
+        CREATEURL=https://api.github.com/orgs/$GITHUBORG/repos
+    fi
     curl -f -H "Authorization: token $GITHUBTOKEN" \
          -d "{ \"user\": \"$GITHUBUSER\",
                \"user_secret\": \"$GITHUBTOKEN\",
                \"name\": \"$PROJECT\",
                \"description\": \"$ESCDESC\" }" \
-         https://api.github.com/user/repos >/dev/null
+         $CREATEURL >/dev/null
     if [ $? -ne 0 ]
     then
 	echo "failed to create github repository: API error" >&2
 	exit 1
     fi
-    URL="ssh://git@github.com/$GITHUBUSER/$PROJECT"
+    URL="ssh://git@github.com/$GITHUBORG/$PROJECT"
     ;;
 gitlab)
     if echo "$PROJECT" | grep / >/dev/null
@@ -285,7 +298,7 @@ gitlab)
 	echo "failed to create gitlab repository: curl error" >&2
 	exit 1
     fi
-    URL="ssh://git@gitlab.com/$GITLABUSER/$PROJECT"
+    URL="ssh://git@gitlab.com/$GITHUBUSER/$PROJECT"
     ;;
 "")
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
