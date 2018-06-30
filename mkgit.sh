@@ -288,13 +288,13 @@ gitlab)
     GITLABTOKEN="`cat $HOME/.gitlab-token`"
     PROJECTBASE="`basename \"$PROJECT\" .git`"
     case $PUBLIC in
-        true) VISIBILITY=20 ;;
-        false) VISIBILITY=0 ;;
+        true) VISIBILITY=public ;;
+        false) VISIBILITY=private ;;
         *) echo "bad PUBLIC" >&2; exit 1 ;;
     esac
     if curl -f -H "PRIVATE-TOKEN: $GITLABTOKEN" \
         --data "name=$PROJECTBASE" \
-        --data "visibility_level=$VISIBILITY" \
+        --data "visibility=$VISIBILITY" \
         --data-urlencode "description=$DESC" \
         https://gitlab.com/api/v4/projects >/dev/null
     then
