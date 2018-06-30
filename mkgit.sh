@@ -270,7 +270,7 @@ gitlab)
         RESP="`curl -f \
           --data \"login=$GITLABUSER\" \
           --data-urlencode \"password=$GITLAB_PASSWORD\" \
-          https://gitlab.com/api/v3/session`"
+          https://gitlab.com/api/v4/session`"
         if [ $? -ne 0 ]
         then
             echo "Gitlab authentication failed" >&2
@@ -287,18 +287,23 @@ gitlab)
     fi
     GITLABTOKEN="`cat $HOME/.gitlab-token`"
     PROJECTBASE="`basename \"$PROJECT\" .git`"
+    case $PUBLIC in
+        true) VISIBILITY=20 ;;
+        false) VISIBILITY=0 ;;
+        *) echo "bad PUBLIC" >&2; exit 1 ;;
+    esac
     if curl -f -H "PRIVATE-TOKEN: $GITLABTOKEN" \
         --data "name=$PROJECTBASE" \
-        --data "public=$PUBLIC" \
+        --data "visibility_level=$VISIBILITY" \
         --data-urlencode "description=$DESC" \
-        https://gitlab.com/api/v3/projects >/dev/null
+        https://gitlab.com/api/v4/projects >/dev/null
     then
         :
     else
 	echo "failed to create gitlab repository: curl error" >&2
 	exit 1
     fi
-    URL="ssh://git@gitlab.com/$GITHUBUSER/$PROJECT"
+    URL="ssh://git@gitlab.com/$GITLABUSER/$PROJECT"
     ;;
 "")
     if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
