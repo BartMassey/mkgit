@@ -99,11 +99,11 @@ fi
 # the handling for the scripted special case, which sources
 # the script for some of these variables.
 case $X in
-github*|gitlab)
+github*|gitlab*)
     PROJECT="$TARGET"
     case $X in
-        github-*)
-            GITHUBORG="`echo $X | sed 's/github-//'`"
+        github-*|gitlab-*)
+            GITORG="`echo $X | sed 's/git...-//'`"
             X="`echo $X | sed 's/-.*$//'`"
             ;;
     esac
@@ -230,11 +230,11 @@ github)
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
     CREATEURL=https://api.github.com/user/repos
-    if [ "$GITHUBORG" = "" ]
+    if [ "$GITORG" = "" ]
     then
-        GITHUBORG=$GITHUBUSER
+        GITORG=$GITHUBUSER
     else
-        CREATEURL=https://api.github.com/orgs/$GITHUBORG/repos
+        CREATEURL=https://api.github.com/orgs/$GITORG/repos
     fi
     curl -f -H "Authorization: token $GITHUBTOKEN" \
          -d "{ \"user\": \"$GITHUBUSER\",
