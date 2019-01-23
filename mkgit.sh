@@ -182,11 +182,6 @@ github)
         echo "$PGM: error: Github name should not be a pathname" >&2
         exit 1
     fi
-    if ! $PUBLIC && [ ! -f "$HOME/.githubprivate" ]
-    then
-	echo "$PGM: cannot create private github repos for licensing reasons" >&2
-	exit 1
-    fi
     GITHUBUSER="`cat $HOME/.githubuser`"
     if [ $? -ne 0 ]
     then
@@ -236,11 +231,17 @@ github)
     else
         CREATEURL=https://api.github.com/orgs/$GITHUBORG/repos
     fi
+    case $PUBLIC in
+        true) PRIVATE=false ;;
+        false) PRIVATE=true ;;
+        *) echo "bad PUBLIC" >&2; exit 1 ;;
+    esac
     curl -f -H "Authorization: token $GITHUBTOKEN" \
          -d "{ \"user\": \"$GITHUBUSER\",
                \"user_secret\": \"$GITHUBTOKEN\",
                \"name\": \"$PROJECT\",
-               \"description\": \"$ESCDESC\" }" \
+               \"description\": \"$ESCDESC\",
+               \"private\": \"$PRIVATE\" }" \
          $CREATEURL >/dev/null
     if [ $? -ne 0 ]
     then
