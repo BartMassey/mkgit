@@ -241,7 +241,7 @@ github)
                \"user_secret\": \"$GITHUBTOKEN\",
                \"name\": \"$PROJECT\",
                \"description\": \"$ESCDESC\",
-               \"private\": \"$PRIVATE\" }" \
+               \"private\": $PRIVATE }" \
          $CREATEURL >/dev/null
     if [ $? -ne 0 ]
     then
