@@ -68,12 +68,23 @@ then
     exit 1
 fi
 
+# Find and validate the current branch.
+BRANCH="`git branch | sed -e '/^* /!d' -e 's/^* //'`"
+case "$BRANCH" in
+    master|main)
+        ;;
+    *)
+        echo "invalid main branch $BRANCH" >&2
+        exit 1
+        ;;
+esac
+
 # Finalize the project description.
 case "$DESC" in
   "")    
     # If no description, dig the description out of
     # the initial git commit.
-    DESC="`git log --pretty="%s" master | tail -1`"
+    DESC="`git log --pretty="%s" $BRANCH | tail -1`"
     if [ $? -ne 0 ]
     then
         echo "$PGM: could not get a project description" >&2
@@ -352,7 +363,7 @@ else
     git remote rm origin
     git remote add origin "$URL"
 fi
-git push -u origin master
+git push -u origin $BRANCH
 if [ "$?" -ne 0 ]
 then
     echo "$PGM: push to origin failed" >&2
