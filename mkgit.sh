@@ -259,7 +259,7 @@ github)
 	echo "failed to create github repository: API error" >&2
 	exit 1
     fi
-    URL="ssh://git@github.com/$GITHUBORG/$PROJECT"
+    URL="ssh://git@github.com/$GITORG/$PROJECT"
     ;;
 gitlab)
     if echo "$PROJECT" | grep / >/dev/null
