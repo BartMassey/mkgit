@@ -106,16 +106,35 @@ fi
 
 # Try to get the PROJECT (i.e., repo name on target machine)
 # set up successfully. In the non-special case, also set up
-# HOST and PARENT for the upcoming ssh. Note in particular
+# GITHOST and PARENT for the upcoming ssh. Note in particular
 # the handling for the scripted special case, which sources
 # the script for some of these variables.
 case $X in
 github*|gitlab*)
     PROJECT="$TARGET"
     case $X in
-        github-*|gitlab-*)
+        github|gitlab)
+            SERVICE="$X"
+            ;;
+        github-*)
             GITORG="`echo $X | sed 's/git...-//'`"
-            X="`echo $X | sed 's/-.*$//'`"
+            SERVICE=github
+            ;;
+        gitlab-*)
+            SUFFIX="`echo $X | sed 's/git...-//'`"
+            case "$SUFFIX" in
+                *.*-*)
+                    GITHOST="`echo $SUFFIX | sed 's/-.*//'`"
+                    GITORG="`echo $SUFFIX | sed 's/[a-z.][a-z.]*-//'`"
+                    ;;
+                *.*)
+                    GITHOST="$SUFFIX"
+                    ;;
+                *)
+                    GITORG="$SUFFIX"
+                    ;;
+            esac
+            SERVICE=gitlab
             ;;
     esac
     ;;
@@ -125,14 +144,14 @@ github*|gitlab*)
         echo "$USAGE" >&2
         exit 1
     fi
-    HOST="`expr \"$TARGET\" : 'ssh://\([^/]*\)'`"
+    GITHOST="`expr \"$TARGET\" : 'ssh://\([^/]*\)'`"
     PARENT="`expr \"$TARGET\" : 'ssh://[^/]*\(/.*\)/'`"
     PROJECT="`expr \"$TARGET\" : 'ssh://[^/]*/.*/\([^/]*\.git$\)'`"
     if [ "$PROJECT" = "" ]
     then
         PROJECT="`expr \"$TARGET\" : 'ssh://[^/]*/.*/\([^/.]*$\)'`"
     fi
-    if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
+    if [ "$GITHOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
     then
         echo "$PGM: bad repo target URL \"$TARGET\", giving up" >&2
         exit 1
@@ -143,7 +162,6 @@ github*|gitlab*)
     eval "case $X in
     $SITES)
         . $BIN/mkgit-$X
-        X=''
         ;;
     *)
         echo \"$PGM: unknown -X target \\\"$X\\\", giving up\" >&2
@@ -184,9 +202,9 @@ then
 fi
 
 # Either execute the special-case code to set up a Github or
-# Gitlab repo, or use the now-established HOST, PARENT and
+# Gitlab repo, or use the now-established GITHOST, PARENT and
 # PROJECT to set up a repo using ssh.
-case $X in
+case $SERVICE in
 github)
     if echo "$PROJECT" | grep / >/dev/null
     then
@@ -267,13 +285,14 @@ gitlab)
         echo "$PGM: error: Gitlab name should not be a pathname" >&2
         exit 1
     fi
-    GITLABUSER="`cat $HOME/.gitlabuser`"
+    GITHOST=${GITHOST-gitlab.com}
+    GITLABUSER="`cat $HOME/.gitlabuser-$GITHOST`"
     if [ $? -ne 0 ]
     then
-	echo "$PGM: need \$HOME/.gitlabuser" >&2
+	echo "$PGM: need \$HOME/.gitlabuser-$GITHOST" >&2
 	exit 1
     fi
-    if [ ! -f "$HOME/.gitlab-token" ]
+    if [ ! -f "$HOME/.gitlab-token-$GITHOST" ]
     then
         stty -echo
         read -p "Gitlab password: " GITLAB_PASSWORD
@@ -282,22 +301,22 @@ gitlab)
         RESP="`curl -f \
           --data \"login=$GITLABUSER\" \
           --data-urlencode \"password=$GITLAB_PASSWORD\" \
-          https://gitlab.com/api/v4/session`"
+          https://$GITHOST/api/v4/session`"
         if [ $? -ne 0 ]
         then
             echo "Gitlab authentication failed" >&2
             exit 1
         fi
-        echo "$RESP" | jq -r .private_token > $HOME/.gitlab-token
-        if [ $? -ne 0 ] || [ ! -s "$HOME/.gitlab-token" ]
+        echo "$RESP" | jq -r .private_token > "$HOME/.gitlab-token-$GITHOST"
+        if [ $? -ne 0 ] || [ ! -s "$HOME/.gitlab-token-$GITHOST" ]
         then
             echo "$PGM: failed to get a Gitlab private token" >&2
-            rm -f "$HOME/.gitlab-token"
+            rm -f "$HOME/.gitlab-token-$GITHOST"
             exit 1
         fi
-        chmod 0600 "$HOME/.gitlab-token"
+        chmod 0600 "$HOME/.gitlab-token-$GITHOST"
     fi
-    GITLABTOKEN="`cat $HOME/.gitlab-token`"
+    GITLABTOKEN="`cat $HOME/.gitlab-token-$GITHOST`"
     PROJECTBASE="`basename \"$PROJECT\" .git`"
     case $PUBLIC in
         true) VISIBILITY=public ;;
@@ -308,26 +327,26 @@ gitlab)
         --data "name=$PROJECTBASE" \
         --data "visibility=$VISIBILITY" \
         --data-urlencode "description=$DESC" \
-        https://gitlab.com/api/v4/projects >/dev/null
+        "https://$GITHOST/api/v4/projects" >/dev/null
     then
         :
     else
 	echo "failed to create gitlab repository: curl error" >&2
 	exit 1
     fi
-    URL="ssh://git@gitlab.com/$GITLABUSER/$PROJECT"
+    URL="ssh://git@$GITHOST/$GITLABUSER/$PROJECT"
     ;;
 "")
-    if [ "$HOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
+    if [ "$GITHOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
     then
         echo "$PGM: insufficient info to proceed (internal error?)" >&2
         exit 1
     fi
-    URL="ssh://$HOST$PARENT/$PROJECT"
+    URL="ssh://$GITHOST$PARENT/$PROJECT"
     QUOTESTR="s/\\([\"\'\!\$\\\\]\\)/\\\\\\1/g"
     PARENTQ="`echo \"$PARENT\" | sed \"$QUOTESSTR\"`"
     PROJECTQ="`echo \"$PROJECT\" | sed \"$QUOTESSTR\"`"
-    ssh -x "$HOST" sh <<EOF
+    ssh -x "$GITHOST" sh <<EOF
     cd "${PARENTQ}" &&
     mkdir -p "${PROJECTQ}" &&
     cd "${PROJECTQ}" &&

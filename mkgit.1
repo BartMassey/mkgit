@@ -4,7 +4,7 @@
 mkgit \- create an upstream git repo and push to it
 .SH SYNOPSIS
 mkgit [\fB-p\fP|\fB-d\fP \fI<desc>\fP]
-  [ \fB-X\fP \fIsite1\fP|...|github|gitlab [\fI<project>\fP[.git]]
+  [ \fB-X\fP \fIsite1\fP|...|github[-\fI<org>\fP]|gitlab[-\fI<site>\fP][-<\fIorg\fP>] [\fI<project>\fP[.git]]
   | ssh://[\fI<user>\fP@]host/\fI<dir>\fP/\fI<project>\fP[.git]]
   [\fI<source-dir>\fP]
 .SH DESCRIPTION
@@ -85,24 +85,27 @@ and
 files are portable across machines.
 .PP
 The keyword "gitlab" is special, and allows automatic
-creation of GitLab repositories using the GitLab API v3
+creation of GitLab repositories using the GitLab API v4
 with a private token. For this to work, the
 user will have to have a file in
 .I "$HOME"
 called
-.IR ".gitlabuser" .
+.IR ".gitlabuser-<site>" .
 The
-.I ".gitlabuser"
+.I ".gitlabuser-<site>"
 file should contain a single line giving the GitLab username
-of the target user.
+of the target user on the target site. Note that
+.I "gitlab.com"
+is the default site.
 A
-.I ".gitlab-token"
+.I ".gitlab-token-<site>"
 should also be present in the home directory.
 The
-.I ".gitlab-token"
+.I ".gitlab-token-<site>"
 file should contain a single line giving the GitLab private
-access token of the target user. If the file does not
-exist, it will be created using the GitLab API.
+access token of the target user on the target site. If the file does not
+exist, it will be created using the GitLab API if the user
+can give an access password.
 .PP
 Other keywords correspond to access scripts. A keyword of
 .IR foo ,
