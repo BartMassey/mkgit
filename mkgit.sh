@@ -20,7 +20,7 @@ SITES="`echo $SITESCRIPTS | sed -e 's=mkgit-==g' -e 's= =|=g'`"
 
 USAGE="$PGM: usage:
   $PGM [-p|-d <desc>]
-  [ -X ${SITES:+$SITES|}github|gitlab [<project>[.git]]
+  [ -X ${SITES:+$SITES|}github[-<org>]|gitlab[-<org>] [-F] [<project>[.git]]
   | ssh://[<user>@]host/<dir>/<project>[.git]]
   [<source-dir>]"
 
@@ -33,6 +33,8 @@ PUBLIC=true
 # Optional "special" site name that receives
 # custom handling.
 X=""
+# Fork existing repo instead of making new one.
+FORK=false
 
 # Parse arguments.
 while [ $# -gt 0 ]
@@ -50,6 +52,10 @@ do
         PUBLIC=false
 	shift
 	;;
+    -F)
+        FORK=true
+        shift
+        ;;
     -*)
 	echo "$USAGE" >&2
 	exit 1
@@ -253,33 +259,60 @@ github)
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
-    CREATEURL=https://api.github.com/user/repos
-    if [ "$GITORG" = "" ]
+    if $FORK
     then
-        GITORG=$GITHUBUSER
+        ORIGIN="`git remote get-url origin`"
+        TARGETUSER="`echo \"$ORIGIN\" | sed 's=.*/\([^/]*\)/[^/]*=\1='`"
+        PROJECT="`echo \"$ORIGIN\" | sed 's=.*/=='`"
+        FORKURL="https://api.github.com/repos/$TARGETUSER/$PROJECT/forks"
+        if [ "$GITORG" = "" ]
+        then
+            GITORG=$GITHUBUSER-upstream
+        fi
+        if ! $PUBLIC
+        then
+            echo "forks must be public" >&2
+            exit 1
+        fi
+        curl -f -H "Authorization: token $GITHUBTOKEN" \
+             -d "{ \"user\": \"$GITHUBUSER\",
+                   \"user_secret\": \"$GITHUBTOKEN\",
+                   \"organization\": \"$GITORG\" }" \
+             $FORKURL >/dev/null
     else
-        CREATEURL=https://api.github.com/orgs/$GITORG/repos
+        CREATEURL=https://api.github.com/user/repos
+        if [ "$GITORG" = "" ]
+        then
+            GITORG=$GITHUBUSER
+        else
+            CREATEURL=https://api.github.com/orgs/$GITORG/repos
+        fi
+        case $PUBLIC in
+            true) PRIVATE=false ;;
+            false) PRIVATE=true ;;
+            *) echo "bad PUBLIC" >&2; exit 1 ;;
+        esac
+        curl -f -H "Authorization: token $GITHUBTOKEN" \
+             -d "{ \"user\": \"$GITHUBUSER\",
+                   \"user_secret\": \"$GITHUBTOKEN\",
+                   \"name\": \"$PROJECT\",
+                   \"description\": \"$ESCDESC\",
+                   \"private\": $PRIVATE }" \
+             $CREATEURL >/dev/null
     fi
-    case $PUBLIC in
-        true) PRIVATE=false ;;
-        false) PRIVATE=true ;;
-        *) echo "bad PUBLIC" >&2; exit 1 ;;
-    esac
-    curl -f -H "Authorization: token $GITHUBTOKEN" \
-         -d "{ \"user\": \"$GITHUBUSER\",
-               \"user_secret\": \"$GITHUBTOKEN\",
-               \"name\": \"$PROJECT\",
-               \"description\": \"$ESCDESC\",
-               \"private\": $PRIVATE }" \
-         $CREATEURL >/dev/null
     if [ $? -ne 0 ]
     then
-	echo "failed to create github repository: API error" >&2
+	echo "failed to create/fork github repository: API error" >&2
 	exit 1
     fi
     URL="ssh://git@github.com/$GITORG/$PROJECT"
     ;;
 gitlab)
+    if $FORK
+    then
+        echo "cannot fork gitlab yet" >&2
+        exit 1
+    fi
     if echo "$PROJECT" | grep / >/dev/null
     then
         echo "$PGM: error: Gitlab name should not be a pathname" >&2
@@ -337,6 +370,11 @@ gitlab)
     URL="ssh://git@$GITHOST/$GITLABUSER/$PROJECT"
     ;;
 "")
+    if $FORK
+    then
+        echo "cannot fork unknown repo" >&2
+        exit 1
+    fi
     if [ "$GITHOST" = "" ] || [ "$PARENT" = "" ] || [ "$PROJECT" = "" ]
     then
         echo "$PGM: insufficient info to proceed (internal error?)" >&2
@@ -373,20 +411,24 @@ EOF
     ;;
 esac
 
-# Push the source repo up to the newly-created target repo.
-if git remote add origin "$URL"
+if $FORK
 then
-    :
-else
-    echo "$PGM: warning: updating remote"
-    git remote rm origin
+    git remote rename origin upstream &&
     git remote add origin "$URL"
+else
+    # Push the source repo up to the newly-created target repo.
+    if git remote add origin "$URL"
+    then
+        :
+    else
+        echo "$PGM: warning: updating remote"
+        git remote rm origin
+        git remote add origin "$URL"
+    fi
+    git push -u origin $BRANCH
+    if [ "$?" -ne 0 ]
+    then
+        echo "$PGM: push to origin failed" >&2
+        exit 1
+    fi
 fi
-git push -u origin $BRANCH
-if [ "$?" -ne 0 ]
-then
-    echo "$PGM: push to origin failed" >&2
-    exit 1
-fi
-
-exit 0

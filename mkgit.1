@@ -4,7 +4,7 @@
 mkgit \- create an upstream git repo and push to it
 .SH SYNOPSIS
 mkgit [\fB-p\fP|\fB-d\fP \fI<desc>\fP]
-  [ \fB-X\fP \fIsite1\fP|...|github[-\fI<org>\fP]|gitlab[-\fI<site>\fP][-<\fIorg\fP>] [\fI<project>\fP[.git]]
+  [ \fB-X\fP \fIsite1\fP|...|github[-\fI<org>\fP]|gitlab[-\fI<site>\fP][-<\fIorg\fP>] [\fB-F] [\fI<project>\fP[.git]]
   | ssh://[\fI<user>\fP@]host/\fI<dir>\fP/\fI<project>\fP[.git]]
   [\fI<source-dir>\fP]
 .SH DESCRIPTION
@@ -45,6 +45,13 @@ is not specified,
 .B -d
 the description will be automatically taken from the initial
 commit on the main or master branch.
+.TP
+.BI "-F"
+Fork an existing repository rather than creating a new
+one. This currently only works for `github.com`. The
+repository to fork is assumed to be `origin` in the current
+repo. This `origin` will be renamed to `upstream` and
+the new `origin` will be the fork if the operation is successful.
 .TP
 .BI "-X" " <site>"
 Instead of requiring a full URL, the
