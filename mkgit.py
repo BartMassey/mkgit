@@ -8,7 +8,8 @@
 # rewrite of a shell script loosely based on an earlier
 # script by Julian Kongslie
 
-import argparse, sys
+import argparse, re, sys
+from pathlib import Path
 
 # Process arguments.
 ap = argparse.ArgumentParser()
@@ -26,10 +27,10 @@ ap.add_argument(
 ap.add_argument(
     "-X",
     "--site",
-    help="site for new repo (--help-sites)",
+    help="site for new repo (--list-sites)",
 )
 ap.add_argument(
-    "--help-sites",
+    "--list-sites",
     help="help on site options",
     action="store_true",
 )
@@ -46,13 +47,18 @@ ap.add_argument(
 )
 args = ap.parse_args()
 
-if args.help_sites:
-    print("site options:", file=sys.stderr)
+configpath = Path.home() / ".mkgit"
+
+if args.list_sites:
     options = [
         "github[-<org>]",
         "gitlab[-<org>]",
     ]
+    for d in configpath.iterdir():
+        if not re.search(".conf$", d.name):
+            continue
+        service = re.sub(".conf$", "", d.name)
+        options.append(service)
     for s in options:
-        print("    " + s, file=sys.stderr)
+        print(s, file=sys.stderr)
     exit(0)
-
