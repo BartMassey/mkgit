@@ -4,11 +4,11 @@
 # Please see the file COPYING in the source
 # distribution of this software for license terms.
 
-# Create a new upstream git repository. A Python rewrite of
-# a shell script loosely based on an earlier script by
-# Julian Kongslie
+# Create a new upstream git repository. This is a Python
+# rewrite of a shell script loosely based on an earlier
+# script by Julian Kongslie
 
-import argparse
+import argparse, sys
 
 # Process arguments.
 ap = argparse.ArgumentParser()
@@ -40,11 +40,19 @@ ap.add_argument(
     action="store_true",
 )
 ap.add_argument(
-    "repo_name",
+    "repo-name",
     help="name of repository (with or without .git)",
     nargs="?",
 )
 args = ap.parse_args()
 
-if args.repo_name:
-    print(args.repo_name)
+if args.help_sites:
+    print("site options:", file=sys.stderr)
+    options = [
+        "github[-<org>]",
+        "gitlab[-<org>]",
+    ]
+    for s in options:
+        print("    " + s, file=sys.stderr)
+    exit(0)
+
