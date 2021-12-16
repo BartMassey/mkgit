@@ -4,9 +4,11 @@
 # Please see the file COPYING in the source
 # distribution of this software for license terms.
 
-# Create a new upstream git repository. This is a Python
-# rewrite of a shell script loosely based on an earlier
-# script by Julian Kongslie
+"""
+Create a new upstream git repository. This is a Python
+rewrite of a shell script loosely based on an earlier
+script by Julian Kongslie.
+"""
 
 import argparse, re, subprocess, sys
 from pathlib import Path
@@ -51,14 +53,16 @@ ap.add_argument(
 )
 args = ap.parse_args()
 
+# User home directory.
 home = Path.home()
+# User sites directory.
 configpath = home / ".mkgit"
+# Special sites.
+gitlabhub = ["github", "gitlab"]
 
+# Just list site possibilities and exit.
 if args.list_sites:
-    options = [
-        "github[-<org>]",
-        "gitlab[-<org>]",
-    ]
+    options = [s + "-<org>" for s in gitlabhub]
     for d in configpath.iterdir():
         if not re.search(".conf$", d.name):
             continue
@@ -69,20 +73,23 @@ if args.list_sites:
     exit(0)
 
 def fail(msg):
+    """Print a failure message to stderr and exit with status 1."""
     print("mkgit:", msg, file=sys.stderr)
     exit(1)
 
 def read_oneliner(path):
+    """Return the string contents of a one-line file."""
     try:
         with open(path, "r") as f:
             result = f.read().strip()
             if len(result.splitlines()) > 1:
-                return None
+                fail(f"{path}: expected one line")
             return result
     except Exception as e:
         fail(f"error reading: {e}")
 
 def git_command(*args):
+    """Run a git command."""
     command = ["git", *args]
     status = subprocess.run(command, capture_output=True, text=True)
     if not status:
@@ -92,17 +99,22 @@ def git_command(*args):
         fail(f"command failed: {' '.join(command)}")
     return status.stdout
 
-repo_link = None
-url = None
+# What kind of system the target is.
 target_type = None
+# Directory on target system to symlink repo to.
+repo_link = None
+# Prefix component of target URL.
+url = None
+# User or organization name on target.
 org = None
+# New repository name.
 repo = None
 if args.site:
-    generic = re.match("(github|gitlab)(-(.*))?$", args.site)
+    generic = re.match(f"({'|'.join(gitlabhub)})(-(.*))?$", args.site)
     if generic:
         target_type = generic[1]
         org = generic[3]
-        url = f"ssh://git@{target_type}.com/{org}/"
+        url = f"ssh://git@{target_type}.com"
     elif re.match("ssh://", args.site):
         target_type = "url"
         url = args.site
@@ -144,12 +156,14 @@ else:
     target_type = "github"
     url = "ssh://git@github.com"
 
+# Try to get a user/org name.
 if not org:
     if target_type == "github":
         org = read_oneliner(home / ".githubuser")
     elif target_type == "gitlab":
         org = read_oneliner(home / ".gitlabuser-gitlab.com")
 
+# Set up the repo name.
 if args.repo:
     if repo:
         warn(f"overriding repo name {repo} with {args.repo}")
@@ -159,6 +173,27 @@ if not repo:
 if not re.search("\.git$", repo):
     repo += ".git"
 
-print(target_type, url, org, repo)
-if repo_link:
-    print(repo_link)
+# Now target_type, url, org, repo and repo_link should be
+# valid, so the fun can commence.
+
+# Find current and main branch names.
+branches = git_command("branch").splitlines()
+branches.sort()
+branch = branches.pop()
+assert branch.startswith("* "), "internal error: branch no star"
+branch = branch[2:]
+main_branch = None
+if branch in ["main", "master"]:
+    main_branch = branch
+elif "  main" in branches:
+    main_branch = "main"
+elif "  master" in branches:
+    main_branch = "master"
+else:
+    fail(f"cannot find main or master branch")
+
+# Find an appropriate description for the target repo.
+description = args.description
+if target_type in gitlabhub and not description:
+    description = git_command("log", "--pretty=%s", main_branch)
+    description = description.splitlines()[-1]
