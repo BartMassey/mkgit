@@ -10,7 +10,8 @@ rewrite of a shell script loosely based on an earlier
 script by Julian Kongslie.
 """
 
-import argparse, re, subprocess, sys
+import argparse, base64, getpass, json, re, subprocess, sys
+import http.client as client
 from pathlib import Path
 
 # Process arguments.
@@ -99,6 +100,52 @@ def git_command(*args):
         fail(f"command failed: {' '.join(command)}")
     return status.stdout
 
+connection = None
+
+def connect(site):
+    global connection
+    if connection:
+        return
+    try:
+        connection = client.HTTPSConnection(site)
+    except client.HTTPException as e:
+        fail(f"http connection error: {e.code}")
+
+auth = None
+def curl_github(path, body=None, ctype='GET'):
+    try:
+        headers = dict()
+        if not body:
+            body = dict()
+        body["accept"] = "application/vnd.github.v3+json"
+        if auth:
+            # HTTP BasicAuth: not supported
+            #authstr = ':'.join(auth)
+            ## https://stackoverflow.com/a/7000784
+            #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
+            #headers["Authorization"] = f"Basic {authstr}"
+            print("auth", auth)
+            user, token = auth
+            body["user"] = user
+            body["user_secret"] = token
+            headers["Authorization"] = f"token {token}"
+            # XXX Required by GitHub v3 API. Ugh.
+            headers["User-Agent"] = "mkgit"
+        body = json.dumps(body)
+        print(headers)
+        print(body)
+        connection.request(ctype, path, body=body, headers=headers)
+        response = connection.getresponse()
+        if response.status == 200:
+            try:
+                return json.load(response)
+            except json.decoder.JSONDecodeError as e:
+                fail(f"curl json error: {e}")
+        else:
+            fail(f"curl bad http status: {response.status}: {response.read()}")
+    except client.HTTPException as e:
+        fail(f"http connection failed: {e.code}")
+
 # What kind of system the target is.
 target_type = None
 # Directory on target system to symlink repo to.
@@ -156,13 +203,6 @@ else:
     target_type = "github"
     url = "ssh://git@github.com"
 
-# Try to get a user/org name.
-if not org:
-    if target_type == "github":
-        org = read_oneliner(home / ".githubuser")
-    elif target_type == "gitlab":
-        org = read_oneliner(home / ".gitlabuser-gitlab.com")
-
 # Set up the repo name.
 if args.repo:
     if repo:
@@ -182,12 +222,13 @@ branches.sort()
 branch = branches.pop()
 assert branch.startswith("* "), "internal error: branch no star"
 branch = branch[2:]
+branches = list(map(lambda b: b[2:], branches))
 main_branch = None
 if branch in ["main", "master"]:
     main_branch = branch
-elif "  main" in branches:
+elif "main" in branches:
     main_branch = "main"
-elif "  master" in branches:
+elif "master" in branches:
     main_branch = "master"
 else:
     fail(f"cannot find main or master branch")
@@ -196,4 +237,28 @@ else:
 description = args.description
 if target_type in gitlabhub and not description:
     description = git_command("log", "--pretty=%s", main_branch)
-    description = description.splitlines()[-1]
+    if len(description) > 0:
+        description = description.splitlines()[-1]
+    else:
+        description = f"{repo}"
+
+# Actually do the work
+if target_type == "github":
+    user = read_oneliner(home / ".githubuser")
+    oauthtoken = read_oneliner(home / ".github-oauthtoken")
+    auth = (user, oauthtoken)
+    connect("api.github.com")
+    # HERE
+    private = curl_github(
+        "/user/repos",
+        body={
+            "affiliation": "owner",
+            "visibility": "private",
+        }
+    )
+    print(private)
+elif target_type == "gitlab":
+    if org:
+        user = read_oneliner(home / f".gitlabuser-{org}")
+    else:
+        user = read_oneliner(home / ".gitlabuser-gitlab.com")
