@@ -79,17 +79,15 @@ giving the GitHub "access token" needed by
 the GitHub repository API v3 to create a repo.
 If the user does not have a
 .I ".github-oauthtoken"
-file, they will be prompted for their GitHub password and
-a token will be created using the GitHub authentication
-API v3 and stored for them; a
-.I ".github-oauthid"
-containing the token id will be stored as well.
-The created token will be visible in the "Applications"
-section of the GitHub website as "mkgit (API)". The
+file, they will need to create one: to do so,
+follow the instructions at
+.I "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token"
+giving the created token a "repo" scope and probably a
+"mkgit" note. Then save the token in the
 .I ".github-oauthtoken"
-and
-.I ".github-oauthid"
-files are portable across machines.
+file with permissions 0600. The
+.I ".github-oauthtoken"
+file is portable across machines.
 .PP
 The keyword "gitlab" is special, and allows automatic
 creation of GitLab repositories using the GitLab API v4

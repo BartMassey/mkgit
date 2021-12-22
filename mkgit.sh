@@ -223,39 +223,10 @@ github)
 	echo "$PGM: need \$HOME/.githubuser" >&2
 	exit 1
     fi
-    if [ ! -s "$HOME/.github-oauthid" ] || [ ! -s "$HOME/.github-oauthtoken" ]
+    if [ ! -s "$HOME/.github-oauthtoken" ]
     then
-        RESP="`curl -f -i -u \"$GITHUBUSER\" \
-          -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
-          https://api.github.com/authorizations`"
-        if [ $? -ne 0 ]
-        then
-            echo "Github authentication failed" >&2
-            exit 1
-        fi
-        if echo "$RESP" | grep -q "X-GitHub-OTP: required;" 
-        then
-            echo "two-factor authentication enabled" >&2 &&
-            read -p "Enter authentication code: " CODE >&2 &&
-            RESP2="`curl -f -i -u \"$GITHUBUSER\" -H \"X-GitHub-OTP: $CODE;\" \
-              -d '{ \"scopes\": [ \"repo\" ], \"note\": \"mkgit\" }' \
-              https://api.github.com/authorizations`" &&
-            echo "$RESP2" | jq -r .token > $HOME/.github-oauthtoken &&
-            echo "$RESP2" | jq -r .id > $HOME/.github-oauthid
-        else
-            echo "$RESP" | jq -r .token > $HOME/.github-oauthtoken &&
-            echo "$RESP" | jq -r .id > $HOME/.github-oauthid
-        fi
-        if [ $? -ne 0 ] || [ ! -s "$HOME/.github-oauthid" ] ||
-                           [ ! -s "$HOME/.github-oauthtoken" ]
-        then
-            echo "$PGM: failed to get a GitHub OAuth2 authorization token" >&2
-            rm -f "$HOME/.github-oauthtoken"
-            rm -f "$HOME/.github-oauthid"
-            exit 1
-        fi
-        chmod 0600 "$HOME/.github-oauthtoken"
-        chmod 0600 "$HOME/.github-oauthid"
+        echo "no $HOME/.github-oauthtoken: see docs" >&2
+        exit 1
     fi
     GITHUBTOKEN="`cat $HOME/.github-oauthtoken`"
     ESCDESC="`echo \"$DESC\" | sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g'`"
