@@ -138,7 +138,21 @@ def curl_github(path, body=None, ctype='GET'):
             except json.decoder.JSONDecodeError as e:
                 fail(f"curl json error: {e}")
         else:
-            fail(f"curl bad http status: {response.status}: {response.read()}")
+            if response.status in client.responses:
+                code = client.responses[response.status]
+            else:
+                code = f"error {response.status}"
+            try:
+                message = "no error information"
+                error = json.load(response)
+                if "message" in error:
+                    message = error["message"]
+                    if "errors" in error:
+                        for sub in error["errors"]:
+                            message += f': {sub["message"]}'
+            except json.decoder.JSONDecodeError:
+                message = "could not decode error response"
+            fail(f"curl bad http status: {code}: {message}")
     except client.HTTPException as e:
         fail(f"http connection failed: {e.code}")
 
