@@ -89,16 +89,15 @@ def read_oneliner(path):
     except Exception as e:
         fail(f"error reading: {e}")
 
-def git_command(*args):
+def git_command(*args, verbose=True):
     """Run a git command."""
     command = ["git", *args]
     status = subprocess.run(command, capture_output=True, text=True)
     if not status:
-        fail(f"command failed: {' '.join(command)}")
-    if status.returncode != 0:
+        fail(f"command failed: git {' '.join(command)}")
+    if status.returncode != 0 and verbose:
         print(status.stderr, file=sys.stderr)
-        fail(f"command failed: {' '.join(command)}")
-    return status.stdout
+    return status.returncode, status.stdout
 
 connection = None
 
@@ -124,7 +123,6 @@ def curl_github(path, body=None, ctype='GET'):
             ## https://stackoverflow.com/a/7000784
             #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
             #headers["Authorization"] = f"Basic {authstr}"
-            print("auth", auth)
             user, token = auth
             body["user"] = user
             body["user_secret"] = token
@@ -132,11 +130,9 @@ def curl_github(path, body=None, ctype='GET'):
             # XXX Required by GitHub v3 API. Ugh.
             headers["User-Agent"] = "mkgit"
         body = json.dumps(body)
-        print(headers)
-        print(body)
         connection.request(ctype, path, body=body, headers=headers)
         response = connection.getresponse()
-        if response.status == 200:
+        if response.status == 201:
             try:
                 return json.load(response)
             except json.decoder.JSONDecodeError as e:
@@ -150,8 +146,8 @@ def curl_github(path, body=None, ctype='GET'):
 target_type = None
 # Directory on target system to symlink repo to.
 repo_link = None
-# Prefix component of target URL.
-url = None
+# Prefix of git remote.
+remote = None
 # User or organization name on target.
 org = None
 # New repository name.
@@ -161,10 +157,10 @@ if args.site:
     if generic:
         target_type = generic[1]
         org = generic[3]
-        url = f"ssh://git@{target_type}.com"
+        remote = f"ssh://git@{target_type}.com"
     elif re.match("ssh://", args.site):
         target_type = "url"
-        url = args.site
+        remote = args.site
     else:
         vars = [ "GITHOST", "PARENT", "REPOLINK" ]
         fields = dict()
@@ -188,20 +184,22 @@ if args.site:
         if 'PARENT' in fields:
             urlbase = urlbase / fields['PARENT']
         target_type = "configed"
-        url = f"ssh://git@{urlbase}"
+        remote = f"ssh://git@{urlbase}"
         repo_link = fields['REPOLINK']
         if args.repo_link:
             repo_link = args.repo_link
 elif args.fork:
-    full_url = git_command("remote", "get-url", "origin").strip()
+    status, full_url = git_command("remote", "get-url", "origin").strip()
+    if status != 0:
+        fail("could not get fork origin")
     m = re.match("(.*)/([^/]+)/([^/]+)/?$", full_url)
-    url = m[1]
+    remote = m[1]
     org = m[2]
     repo = m[3]
     target_type = "fork"
 else:
     target_type = "github"
-    url = "ssh://git@github.com"
+    remote = "ssh://git@github.com"
 
 # Set up the repo name.
 if args.repo:
@@ -209,15 +207,15 @@ if args.repo:
         warn(f"overriding repo name {repo} with {args.repo}")
     repo = args.repo
 if not repo:
-    repo = Path.cwd().parent.name
+    repo = Path.cwd().name
 if not re.search("\.git$", repo):
     repo += ".git"
 
-# Now target_type, url, org, repo and repo_link should be
-# valid, so the fun can commence.
-
 # Find current and main branch names.
-branches = git_command("branch").splitlines()
+status, branches = git_command("branch")
+if status != 0:
+    fail("could not get branches")
+branches = branches.splitlines()    
 branches.sort()
 branch = branches.pop()
 assert branch.startswith("* "), "internal error: branch no star"
@@ -236,29 +234,67 @@ else:
 # Find an appropriate description for the target repo.
 description = args.description
 if target_type in gitlabhub and not description:
-    description = git_command("log", "--pretty=%s", main_branch)
-    if len(description) > 0:
+    status, description = git_command("log", "--pretty=%s", main_branch)
+    if status == 0 and len(description) > 0:
         description = description.splitlines()[-1]
     else:
         description = f"{repo}"
+
+# Now the controlling variables should be set up: the fun
+# can commence.
+print("target_type", target_type)
+print("remote", remote)
+print("org", org)
+print("repo", repo)
+print("repo_link", repo_link)
+print("branch", branch)
+print("main_branch", main_branch)
+print("description", description)
+#exit(0)
+
+assert target_type, "no target type"
+assert remote, "no remote"
 
 # Actually do the work
 if target_type == "github":
     user = read_oneliner(home / ".githubuser")
     oauthtoken = read_oneliner(home / ".github-oauthtoken")
     auth = (user, oauthtoken)
+    if org:
+        create_path = f"/orgs/{org}/repos"
+        github_dir = org
+    else:
+        create_path = "/user/repos"
+        github_dir = user
+    private = args.private
     connect("api.github.com")
-    # HERE
-    private = curl_github(
-        "/user/repos",
+    curl_github(
+        create_path,
         body={
-            "affiliation": "owner",
-            "visibility": "private",
-        }
+            "name": repo,
+            "description": description,
+            "visibility": private,
+        },
+        ctype="POST",
     )
-    print(private)
+    remote = f"{remote}/{github_dir}/{repo}"
 elif target_type == "gitlab":
     if org:
         user = read_oneliner(home / f".gitlabuser-{org}")
     else:
         user = read_oneliner(home / ".gitlabuser-gitlab.com")
+
+status, _ = git_command("remote", "add", "origin", remote)
+if status != 0:
+    print("warning: updating remote", file=sys.stderr)
+    git_command("remote", "rm", "origin")
+    status, _ = git_command("remote", "add", "origin", remote)
+    if status != 0:
+        fail(f"could not update remote origin to {remote}")
+status, _ = git_command("push", "-u", "origin", f"{main_branch}:{main_branch}")
+if status != 0:
+    fail(f"could not push {main_branch} to origin")
+if branch != main_branch:
+    status, _ = git_command("push", "-u", "origin", f"{branch}:{branch}")
+    if status != 0:
+        fail(f"could not push {branch} to origin")
