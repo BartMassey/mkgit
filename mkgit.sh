@@ -165,15 +165,16 @@ github*|gitlab*)
     ;;
 *)
     PROJECT="$TARGET"
-    eval "case $X in
+    case $X in
     $SITES)
-        . $BIN/mkgit-$X
+        eval `. $BIN/mkgit-\"$X\"`
         ;;
     *)
-        echo \"$PGM: unknown -X target \\\"$X\\\", giving up\" >&2
+        echo "$PGM: unknown -X target \"$X\", giving up" >&2
         exit 1
         ;;
-    esac"
+    esac
+    ;;
 esac
 
 # For now, canonicalize target machine repo names to
