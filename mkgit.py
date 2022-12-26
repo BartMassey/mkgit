@@ -63,7 +63,7 @@ gitlabhub = ["github", "gitlab"]
 
 # Just list site possibilities and exit.
 if args.list_sites:
-    options = [s + "-<org>" for s in gitlabhub]
+    options = [s + "[.<domain>][-<org>]" for s in gitlabhub]
     for d in configpath.iterdir():
         if not re.search(".conf$", d.name):
             continue
@@ -110,51 +110,84 @@ def connect(site):
     except client.HTTPException as e:
         fail(f"http connection error: {e.code}")
 
-auth = None
-def curl_github(path, body=None, ctype='GET'):
+def curl(ctype, path, headers, body):
+    # XXX Required by GitHub v3 API. Ugh. May as well use everywhere.
+    headers["User-Agent"] = "mkgit"
+    # Required by Gitlab v4 API. May as well use everywhere.
+    headers["Content-Type"] = "application/json"
+    body = json.dumps(body)
     try:
-        headers = dict()
-        if not body:
-            body = dict()
-        body["accept"] = "application/vnd.github.v3+json"
-        if auth:
-            # HTTP BasicAuth: not supported
-            #authstr = ':'.join(auth)
-            ## https://stackoverflow.com/a/7000784
-            #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
-            #headers["Authorization"] = f"Basic {authstr}"
-            user, token = auth
-            body["user"] = user
-            body["user_secret"] = token
-            headers["Authorization"] = f"token {token}"
-            # XXX Required by GitHub v3 API. Ugh.
-            headers["User-Agent"] = "mkgit"
-        body = json.dumps(body)
         connection.request(ctype, path, body=body, headers=headers)
         response = connection.getresponse()
-        if response.status == 201:
-            try:
-                return json.load(response)
-            except json.decoder.JSONDecodeError as e:
-                fail(f"curl json error: {e}")
-        else:
-            if response.status in client.responses:
-                code = client.responses[response.status]
-            else:
-                code = f"error {response.status}"
-            try:
-                message = "no error information"
-                error = json.load(response)
-                if "message" in error:
-                    message = error["message"]
-                    if "errors" in error:
-                        for sub in error["errors"]:
-                            message += f': {sub["message"]}'
-            except json.decoder.JSONDecodeError:
-                message = "could not decode error response"
-            fail(f"curl bad http status: {code}: {message}")
     except client.HTTPException as e:
         fail(f"http connection failed: {e.code}")
+    if response.status == 201:
+        try:
+            return None, json.load(response)
+        except json.decoder.JSONDecodeError as e:
+            fail(f"curl json error: {e}")
+    else:
+        if response.status in client.responses:
+            code = client.responses[response.status]
+        else:
+            code = f"HTTP error {response.status}"
+        try:
+            error = json.load(response)
+        except json.decoder.JSONDecodeError:
+            error = None
+        return code, error
+
+def curl_github(path, body=None, auth=None, ctype='POST'):
+    headers = dict()
+    if not body:
+        body = dict()
+    # Required by Github v3 API.
+    body["accept"] = "application/vnd.github.v3+json"
+    if auth:
+        # HTTP BasicAuth: not supported
+        #authstr = ':'.join(auth)
+        ## https://stackoverflow.com/a/7000784
+        #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
+        #headers["Authorization"] = f"Basic {authstr}"
+        user, token = auth
+        body["user"] = user
+        body["user_secret"] = token
+        headers["Authorization"] = f"token {token}"
+        code, response = curl(ctype, path, headers, body)
+        if not code:
+            return response
+        try:
+            message = response["message"]
+            if "errors" in response:
+                for sub in response["errors"]:
+                    message += f': {sub["message"]}'
+        except:
+            message = "unknown error"
+        fail(f"API request failed: {code}: {message}")
+
+def curl_gitlab(path, body=None, auth=None, ctype='POST'):
+    headers = dict()
+    if not body:
+        body = dict()
+    if auth:
+        # HTTP BasicAuth: not supported
+        #authstr = ':'.join(auth)
+        ## https://stackoverflow.com/a/7000784
+        #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
+        #headers["Authorization"] = f"Basic {authstr}"
+        headers["PRIVATE-TOKEN"] = f"{auth}"
+    code, response = curl(ctype, path, headers, body)
+    if not code:
+        return response
+    message = response
+    try:
+        for field in ["error", "message"]:
+            if field in response:
+                message = response[field]
+                break
+    except:
+        pass
+    fail(f"API request failed: {code}: {message}")
 
 # What kind of system the target is.
 target_type = None
@@ -167,11 +200,15 @@ org = None
 # New repository name.
 repo = None
 if args.site:
-    generic = re.match(f"({'|'.join(gitlabhub)})(-(.*))?$", args.site)
-    if generic:
-        target_type = generic[1]
-        org = generic[3]
-        remote = f"ssh://git@{target_type}.com"
+    spec = re.match(f"(({'|'.join(gitlabhub)})[.a-zA-Z0-9]*)(-(.*))?$", args.site)
+    if spec:
+        target_type = spec[2]
+        if spec[1] != spec[2]:
+            target_host = spec[1]
+        else:
+            target_host = f"{target_type}.com"
+        org = spec[4]
+        remote = f"ssh://git@{target_host}"
     elif re.match("ssh://", args.site):
         target_type = "url"
         remote = args.site
@@ -280,23 +317,37 @@ if target_type == "github":
     else:
         create_path = "/user/repos"
         github_dir = user
-    private = args.private
+    private = str(args.private).lower()
+    body = {
+        "name": repo,
+        "description": description,
+    }
+    if args.private:
+        body["private"] = True
     connect("api.github.com")
-    curl_github(
-        create_path,
-        body={
-            "name": repo,
-            "description": description,
-            "visibility": private,
-        },
-        ctype="POST",
-    )
+    curl_github(create_path, body=body, auth=auth)
     remote = f"{remote}/{github_dir}/{repo}"
 elif target_type == "gitlab":
+    # XXX could probably deal with orgs
     if org:
-        user = read_oneliner(home / f".gitlabuser-{org}")
+        fail("gitlab orgs not yet supported")
+    user = read_oneliner(home / f".gitlabuser-{target_host}")
+    # XXX could get a new token
+    oauthtoken = read_oneliner(home / f".gitlab-token-{target_host}")
+    if args.private:
+        visibility = "private"
     else:
-        user = read_oneliner(home / ".gitlabuser-gitlab.com")
+        visibility = "public"
+    assert repo[-4:] == ".git"
+    name = repo[:-4]
+    body = {
+        "name": name,
+        "visibility": visibility,
+        "description": description,
+    }
+    connect(target_host)
+    curl_gitlab("/api/v4/projects", body=body, auth=oauthtoken)
+    remote = f"{remote}/{user}/{repo}"
 
 status, _ = git_command("remote", "add", "origin", remote)
 if status != 0:
