@@ -233,9 +233,10 @@ github)
     if $FORK
     then
         ORIGIN="`git remote get-url origin`"
-        TARGETUSER="`echo \"$ORIGIN\" | sed 's=.*/\([^/]*\)/[^/]*=\1='`"
-        PROJECT="`echo \"$ORIGIN\" | sed 's=.*/=='`"
+        TARGETUSER="`echo \"$ORIGIN\" | sed 's=.*://[^/]*/\([^/]*\)/.*=\1='`"
+        PROJECT="`echo \"$ORIGIN\" | sed 's=.*/\([^/]*\)/*$=\1='`"
         FORKURL="https://api.github.com/repos/$TARGETUSER/$PROJECT/forks"
+        echo "$FORKURL"
         if [ "$GITORG" = "" ]
         then
             GITORG=$GITHUBUSER-upstream
