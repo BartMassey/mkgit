@@ -4,18 +4,75 @@
 # Please see the file COPYING in the source
 # distribution of this software for license terms.
 
-"""
-Create a new upstream git repository. This is a Python
-rewrite of a shell script loosely based on an earlier
-script by Julian Kongslie.
-"""
-
-import argparse, base64, getpass, json, re, subprocess, sys
-import http.client as client
+import argparse
+import getpass
+import json
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
+import http.client as client
 
-# Process arguments.
-ap = argparse.ArgumentParser()
+
+def fail(msg):
+    """Print error message and exit with status 1."""
+    print("mkgit:", msg, file=sys.stderr)
+    exit(1)
+
+
+def warn(msg):
+    """Print warning message to stderr."""
+    print("mkgit: warning:", msg, file=sys.stderr)
+
+
+def read_oneliner(path):
+    """Read and return contents of single-line file."""
+    try:
+        with open(path, "r") as f:
+            result = f.read().strip()
+            if len(result.splitlines()) > 1:
+                fail(f"{path}: expected one line")
+            return result
+    except Exception as e:
+        fail(f"error reading {path}: {e}")
+
+
+def git_command(*args, verbose=True):
+    """Execute git command and return status, stdout."""
+    command = ["git", *args]
+    try:
+        status = subprocess.run(command, capture_output=True, text=True, check=False)
+        if status.returncode != 0 and verbose:
+            print(status.stderr, file=sys.stderr)
+        return status.returncode, status.stdout
+    except Exception as e:
+        if verbose:
+            print(f"git command failed: {e}", file=sys.stderr)
+        return 1, ""
+
+
+def find_site_scripts():
+    """Find site scripts in script directory."""
+    script_dir = Path(__file__).parent
+    scripts = []
+    for file in script_dir.glob("mkgit-*"):
+        if file.is_file() and os.access(file, os.X_OK):
+            scripts.append(file.name)
+    return scripts
+
+
+def list_sites():
+    """Return list of available site options."""
+    sites = ["github", "gitlab"]
+    site_scripts = find_site_scripts()
+    for script in site_scripts:
+        site_name = script.replace("mkgit-", "")
+        sites.append(site_name)
+    return sites
+
+
+ap = argparse.ArgumentParser(description="Create a new upstream git repository")
 ap.add_argument(
     "-p",
     "--private",
@@ -34,332 +91,369 @@ ap.add_argument(
     action="store_true",
 )
 ap.add_argument(
-    "--repo-link",
-    help="directory on target site for symlinking repo",
+    "-X",
+    "--site",
+    help="site for new repo (use --list-sites for options)",
 )
 ap.add_argument(
     "--list-sites",
-    help="help on site options",
+    help="list available site options",
     action="store_true",
-)
-ap.add_argument(
-    "site",
-    help="site for new repo (--list-sites)",
-    nargs="?",
 )
 ap.add_argument(
     "repo",
     help="name of repository (with or without .git)",
     nargs="?",
 )
+ap.add_argument(
+    "source_dir",
+    help="source directory (defaults to current directory)",
+    nargs="?",
+)
 args = ap.parse_args()
 
-# User home directory.
-home = Path.home()
-# User sites directory.
-configpath = home / ".mkgit"
-# Special sites.
-gitlabhub = ["github", "gitlab"]
-
-# Just list site possibilities and exit.
 if args.list_sites:
-    options = [s + "[.<domain>][-<org>]" for s in gitlabhub]
-    for d in configpath.iterdir():
-        if not re.search(".conf$", d.name):
-            continue
-        service = re.sub(".conf$", "", d.name)
-        options.append(service)
-    for s in options:
-        print(s, file=sys.stderr)
+    sites = list_sites()
+    print("Available sites:", ", ".join(sites), file=sys.stderr)
+    print("Usage examples:", file=sys.stderr)
+    print("  mkgit -X github myrepo", file=sys.stderr)
+    print("  mkgit -X gitlab myrepo", file=sys.stderr)
+    print("  mkgit -X github-org myrepo", file=sys.stderr)
+    print("  mkgit ssh://user@host/path/repo.git", file=sys.stderr)
     exit(0)
 
-def fail(msg):
-    """Print a failure message to stderr and exit with status 1."""
-    print("mkgit:", msg, file=sys.stderr)
-    exit(1)
+home = Path.home()
 
-def read_oneliner(path):
-    """Return the string contents of a one-line file."""
-    try:
-        with open(path, "r") as f:
-            result = f.read().strip()
-            if len(result.splitlines()) > 1:
-                fail(f"{path}: expected one line")
-            return result
-    except Exception as e:
-        fail(f"error reading: {e}")
-
-def git_command(*args, verbose=True):
-    """Run a git command."""
-    command = ["git", *args]
-    status = subprocess.run(command, capture_output=True, text=True)
-    if not status:
-        fail(f"command failed: git {' '.join(command)}")
-    if status.returncode != 0 and verbose:
-        print(status.stderr, file=sys.stderr)
-    return status.returncode, status.stdout
-
-connection = None
-
-def connect(site):
-    global connection
-    if connection:
-        return
-    try:
-        connection = client.HTTPSConnection(site)
-    except client.HTTPException as e:
-        fail(f"http connection error: {e.code}")
-
-def curl(ctype, path, headers, body):
-    # XXX Required by GitHub v3 API. Ugh. May as well use everywhere.
-    headers["User-Agent"] = "mkgit"
-    # Required by Gitlab v4 API. May as well use everywhere.
-    headers["Content-Type"] = "application/json"
-    body = json.dumps(body)
-    try:
-        connection.request(ctype, path, body=body, headers=headers)
-        response = connection.getresponse()
-    except client.HTTPException as e:
-        fail(f"http connection failed: {e.code}")
-    if response.status == 201:
-        try:
-            return None, json.load(response)
-        except json.decoder.JSONDecodeError as e:
-            fail(f"curl json error: {e}")
-    else:
-        if response.status in client.responses:
-            code = client.responses[response.status]
-        else:
-            code = f"HTTP error {response.status}"
-        try:
-            error = json.load(response)
-        except json.decoder.JSONDecodeError:
-            error = None
-        return code, error
-
-def curl_github(path, body=None, auth=None, ctype='POST'):
-    headers = dict()
-    if not body:
-        body = dict()
-    # Required by Github v3 API.
-    body["accept"] = "application/vnd.github.v3+json"
-    if auth:
-        # HTTP BasicAuth: not supported
-        #authstr = ':'.join(auth)
-        ## https://stackoverflow.com/a/7000784
-        #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
-        #headers["Authorization"] = f"Basic {authstr}"
-        user, token = auth
-        body["user"] = user
-        body["user_secret"] = token
-        headers["Authorization"] = f"token {token}"
-        code, response = curl(ctype, path, headers, body)
-        if not code:
-            return response
-        try:
-            message = response["message"]
-            if "errors" in response:
-                for sub in response["errors"]:
-                    message += f': {sub["message"]}'
-        except:
-            message = "unknown error"
-        fail(f"API request failed: {code}: {message}")
-
-def curl_gitlab(path, body=None, auth=None, ctype='POST'):
-    headers = dict()
-    if not body:
-        body = dict()
-    if auth:
-        # HTTP BasicAuth: not supported
-        #authstr = ':'.join(auth)
-        ## https://stackoverflow.com/a/7000784
-        #authstr = base64.b64encode(bytes(authstr, "ascii")).decode("ascii")
-        #headers["Authorization"] = f"Basic {authstr}"
-        headers["PRIVATE-TOKEN"] = f"{auth}"
-    code, response = curl(ctype, path, headers, body)
-    if not code:
-        return response
-    message = response
-    try:
-        for field in ["error", "message"]:
-            if field in response:
-                message = response[field]
-                break
-    except:
-        pass
-    fail(f"API request failed: {code}: {message}")
-
-# What kind of system the target is.
-target_type = None
-# Directory on target system to symlink repo to.
-repo_link = None
-# Prefix of git remote.
-remote = None
-# User or organization name on target.
-org = None
-# New repository name.
-repo = None
-if args.site:
-    spec = re.match(f"(({'|'.join(gitlabhub)})[.a-zA-Z0-9]*)(-(.*))?$", args.site)
-    if spec:
-        target_type = spec[2]
-        if spec[1] != spec[2]:
-            target_host = spec[1]
-        else:
-            target_host = f"{target_type}.com"
-        org = spec[4]
-        remote = f"ssh://git@{target_host}"
-    elif re.match("ssh://", args.site):
-        target_type = "url"
-        remote = args.site
-    else:
-        vars = [ "GITHOST", "PARENT", "REPOLINK" ]
-        fields = dict()
-        path = configpath / f"{args.site}.conf"
-        try:
-            config = open(path, "r")
-        except Exception as e:
-            fail(f"could not open config: {e}")
-        for i, line in enumerate(config):
-            try:
-                var, val = line.strip().split('=')
-            except:
-                fail(f"{path}:{i+1}: bad format")
-            if var not in vars:
-                fail(f"{var}: unknown config variable")
-            fields[var] = val
-        config.close()
-        if 'GITHOST' not in fields:
-            fail(f"{path}: no GITHOST")
-        urlbase = Path(fields['GITHOST'])
-        if 'PARENT' in fields:
-            urlbase = urlbase / fields['PARENT']
-        target_type = "configed"
-        remote = f"ssh://git@{urlbase}"
-        repo_link = fields['REPOLINK']
-        if args.repo_link:
-            repo_link = args.repo_link
-elif args.fork:
-    status, full_url = git_command("remote", "get-url", "origin").strip()
-    if status != 0:
-        fail("could not get fork origin")
-    m = re.match("(.*)/([^/]+)/([^/]+)/?$", full_url)
-    remote = m[1]
-    org = m[2]
-    repo = m[3]
-    target_type = "fork"
+original_dir = Path.cwd()
+if args.source_dir:
+    source_dir = Path(args.source_dir).resolve()
+    if not (source_dir / ".git").exists():
+        fail(f"directory {source_dir} is not a git working directory!")
+    os.chdir(source_dir)
 else:
-    target_type = "github"
-    remote = "ssh://git@github.com"
+    source_dir = Path.cwd()
+    if not (source_dir / ".git").exists():
+        fail(f"current directory is not a git working directory!")
 
-# Set up the repo name.
-if args.repo:
-    if repo:
-        warn(f"overriding repo name {repo} with {args.repo}")
-    repo = args.repo
-if not repo:
-    repo = Path.cwd().name
-if not re.search("\.git$", repo):
-    repo += ".git"
-
-# Find current and main branch names.
-status, branches = git_command("branch")
+status, branch_output = git_command("branch")
 if status != 0:
-    fail("could not get branches")
-branches = branches.splitlines()    
-branches.sort()
-branch = branches.pop()
-assert branch.startswith("* "), "internal error: branch no star"
-branch = branch[2:]
-branches = list(map(lambda b: b[2:], branches))
-main_branch = None
-if branch in ["main", "master"]:
-    main_branch = branch
-elif "main" in branches:
-    main_branch = "main"
-elif "master" in branches:
-    main_branch = "master"
-else:
-    fail(f"cannot find main or master branch")
+    fail("could not get current branch")
+    
+current_branch = None
+for line in branch_output.splitlines():
+    if line.startswith("* "):
+        current_branch = line[2:]
+        break
 
-# Find an appropriate description for the target repo.
+if not current_branch:
+    fail("could not determine current_branch")
+
+if current_branch not in ["master", "main"]:
+    fail(f"invalid main branch {current_branch}, must be master or main")
+
 description = args.description
-if target_type in gitlabhub and not description:
-    status, description = git_command("log", "--pretty=%s", main_branch)
-    if status == 0 and len(description) > 0:
-        description = description.splitlines()[-1]
+if not description:
+    status, desc_output = git_command("log", "--pretty=%s", current_branch)
+    if status == 0 and desc_output.strip():
+        description = desc_output.strip().split('\n')[-1]
     else:
-        description = f"{repo}"
+        description = f"Repository {source_dir.name}"
 
-# Now the controlling variables should be set up: the fun
-# can commence.
-print("target_type", target_type)
-print("remote", remote)
-print("org", org)
-print("repo", repo)
-print("repo_link", repo_link)
-print("branch", branch)
-print("main_branch", main_branch)
-print("description", description)
-#exit(0)
+target_type = None
+target_host = None
+org = None
+parent_path = None
+repo_link = None
+repo_name = args.repo if args.repo else source_dir.name
+if not repo_name.endswith('.git'):
+    repo_name += '.git'
 
-assert target_type, "no target type"
-assert remote, "no remote"
+if args.site:
+    if args.site.startswith("github") or args.site.startswith("gitlab"):
+        match = re.match(r'^(github|gitlab)(?:-([^-]+)(?:-([^-]+))?)?$', args.site)
+        if match:
+            service = match.group(1)
+            if match.group(1) != match.group(2):
+                target_host = match.group(1)
+            else:
+                target_host = f"{service}.com"
+            org = match.group(4)
+            target_type = service
+    elif args.site.startswith("ssh://"):
+        target_type = "ssh"
+        ssh_url = args.site
+        ssh_match = re.match(r'ssh://([^/]+)(/.+)/([^/]+?)(?:\.git)?/?$', ssh_url)
+        if ssh_match is not None:
+            target_host = ssh_match.group(1)
+            parent_path = ssh_match.group(2)
+            repo_name = ssh_match.group(3)
+            if not repo_name.endswith('.git'):
+                repo_name += '.git'
+        else:
+            fail(f"bad SSH URL: {ssh_url}")
+    else:
+        target_type = "custom"
+        site_name = args.site
+        script_path = Path(__file__).parent / f"mkgit-{site_name}"
+        if not script_path.exists():
+            fail(f"unknown site script: mkgit-{site_name}")
+        
+        script_vars = {}
+        try:
+            result = subprocess.run([str(script_path)], capture_output=True, text=True, check=True)
+            for line in result.stdout.strip().split('\n'):
+                if '=' in line:
+                    var, val = line.strip().split('=', 1)
+                    script_vars[var] = val
+        except Exception as e:
+            fail(f"failed to execute site script: {e}")
+        
+        target_host = script_vars.get('GITHOST')
+        parent_path = script_vars.get('PARENT', '')
+        repo_link = script_vars.get('REPOLINK')
+        
+        if not target_host:
+            fail("site script must set GITHOST")
 
-# Actually do the work
-if target_type == "github":
+def create_github_repo(user, token, org, repo, description, private):
+    """Create GitHub repository via API."""
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "mkgit"
+    }
+    
+    data = {
+        "name": repo.replace('.git', ''),
+        "description": description
+    }
+    
+    if private:
+        data["private"] = True
+    
+    try:
+        if org:
+            url = f"/orgs/{org}/repos"
+        else:
+            url = "/user/repos"
+        
+        conn = client.HTTPSConnection("api.github.com")
+        body = json.dumps(data)
+        conn.request("POST", url, body=body, headers=headers)
+        response = conn.getresponse()
+        
+        if response.status == 201:
+            return True
+        else:
+            error_body = response.read().decode()
+            try:
+                error_data = json.loads(error_body)
+                message = error_data.get("message", "Unknown error")
+                if "errors" in error_data:
+                    for error in error_data["errors"]:
+                        message += f": {error.get('message', 'Unknown')}"
+            except:
+                message = error_body[:200]
+            fail(f"GitHub API error: {message}")
+            
+    except Exception as e:
+        fail(f"GitHub connection error: {e}")
+
+
+def fork_github_repo(user, token, org, repo):
+    """Fork GitHub repository via API."""
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "mkgit"
+    }
+    
+    # Get current origin to determine fork source
+    status, origin_url = git_command("remote", "get-url", "origin")
+    if status != 0:
+        fail("could not get origin URL")
+    
+    origin_match = re.match(r'https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$', origin_url.strip())
+    if origin_match is None:
+        fail(f"origin must be a GitHub repository: {origin_url.strip()}")
+    
+    source_user = origin_match.group(1)  # type: ignore
+    source_repo = origin_match.group(2).replace('.git', '')  # type: ignore
+    
+    # Determine fork organization
+    fork_org = org if org else f"{user}-upstream"
+    
+    # Create fork via API
+    try:
+        conn = client.HTTPSConnection("api.github.com")
+        data = {
+            "organization": fork_org
+        }
+        body = json.dumps(data)
+        url = f"/repos/{source_user}/{source_repo}/forks"
+        conn.request("POST", url, body=body, headers=headers)
+        response = conn.getresponse()
+        
+        if response.status == 202:
+            return f"ssh://git@github.com/{fork_org}/{source_repo}.git"
+        else:
+            error_body = response.read().decode()
+            fail(f"GitHub fork failed: {error_body}")
+            
+    except Exception as e:
+        fail(f"GitHub fork error: {e}")
+
+
+def create_gitlab_repo(user, token, host, repo, description, private):
+    """Create GitLab repository via API."""
+    headers = {
+        "PRIVATE-TOKEN": token,
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "name": repo.replace('.git', ''),
+        "visibility": "private" if private else "public",
+        "description": description
+    }
+    
+    try:
+        conn = client.HTTPSConnection(host)
+        body = json.dumps(data)
+        conn.request("POST", "/api/v4/projects", body=body, headers=headers)
+        response = conn.getresponse()
+        
+        if response.status == 201:
+            return True
+        else:
+            error_body = response.read().decode()
+            try:
+                error_data = json.loads(error_body)
+                message = error_data.get("message", "Unknown error")
+            except:
+                message = error_body[:200]
+            fail(f"GitLab API error: {message}")
+            
+    except Exception as e:
+        fail(f"GitLab connection error: {e}")
+
+
+def get_gitlab_token(host, user):
+    """Get or create GitLab token."""
+    token_file = home / f".gitlab-token-{host}"
+    
+    if token_file.exists():
+        return read_oneliner(token_file)
+    
+    # Need to authenticate to get token
+    password = getpass.getpass(f"GitLab password for {user}@{host}: ")
+    
+    try:
+        conn = client.HTTPSConnection(host)
+        data = {
+            "login": user,
+            "password": password
+        }
+        body = json.dumps(data)
+        conn.request("POST", "/api/v4/session", body=body, headers={"Content-Type": "application/json"})
+        response = conn.getresponse()
+        
+        if response.status == 201:
+            response_data = json.loads(response.read().decode())
+            private_token = response_data.get("private_token")
+            if private_token:
+                with open(token_file, "w") as f:
+                    f.write(private_token)
+                os.chmod(token_file, 0o600)
+                return private_token
+            else:
+                fail("no private token in response")
+        else:
+            fail("GitLab authentication failed")
+            
+    except Exception as e:
+        fail(f"GitLab authentication error: {e}")
+
+
+def create_ssh_repo(host, parent_path, repo_name, description, private, repo_link=None):
+    """Create repository on remote host via SSH."""
+    # Escape special characters for shell
+    def shell_escape(s):
+        return s.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+    
+    parent_q = shell_escape(parent_path)
+    repo_q = shell_escape(repo_name)
+    desc_q = shell_escape(description)
+    
+    ssh_script = f"""cd "{parent_q}" &&
+mkdir -p "{repo_q}" &&
+cd "{repo_q}" &&
+git init --bare --shared=group &&
+echo "{desc_q}" >description &&
+if {str(not private).lower()} ; then
+    touch git-daemon-export-ok &&
+    if [ "{repo_link or ''}" != "" ] ; then
+        ln -sf "{parent_q}/{repo_q}" "{repo_link}"/
+    fi
+fi"""
+    
+    try:
+        result = subprocess.run(["ssh", "-x", host, "sh"], 
+                              input=ssh_script, text=True, check=True, capture_output=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        fail(f"SSH to {host} failed: {e.stderr}")
+
+
+remote_url = None
+
+if args.fork:
+    if target_type != "github":
+        fail("forking only supported for GitHub")
+    
     user = read_oneliner(home / ".githubuser")
-    oauthtoken = read_oneliner(home / ".github-oauthtoken")
-    auth = (user, oauthtoken)
-    if org:
-        create_path = f"/orgs/{org}/repos"
-        github_dir = org
-    else:
-        create_path = "/user/repos"
-        github_dir = user
-    private = str(args.private).lower()
-    body = {
-        "name": repo,
-        "description": description,
-    }
-    if args.private:
-        body["private"] = True
-    connect("api.github.com")
-    curl_github(create_path, body=body, auth=auth)
-    remote = f"{remote}/{github_dir}/{repo}"
-elif target_type == "gitlab":
-    # XXX could probably deal with orgs
-    if org:
-        fail("gitlab orgs not yet supported")
-    user = read_oneliner(home / f".gitlabuser-{target_host}")
-    # XXX could get a new token
-    oauthtoken = read_oneliner(home / f".gitlab-token-{target_host}")
-    if args.private:
-        visibility = "private"
-    else:
-        visibility = "public"
-    assert repo[-4:] == ".git"
-    name = repo[:-4]
-    body = {
-        "name": name,
-        "visibility": visibility,
-        "description": description,
-    }
-    connect(target_host)
-    curl_gitlab("/api/v4/projects", body=body, auth=oauthtoken)
-    remote = f"{remote}/{user}/{repo}"
+    token = read_oneliner(home / ".github-oauthtoken")
+    remote_url = fork_github_repo(user, token, org, repo_name.replace('.git', ''))
+    
+elif target_type == "github":
+    user = read_oneliner(home / ".githubuser")
+    token = read_oneliner(home / ".github-oauthtoken")
+    create_github_repo(user, token, org, repo_name, description, args.private)
+    gh_org = org if org else user
+    remote_url = f"ssh://git@github.com/{gh_org}/{repo_name}"
 
-status, _ = git_command("remote", "add", "origin", remote)
-if status != 0:
-    print("warning: updating remote", file=sys.stderr)
+elif target_type == "gitlab":
+    gitlab_user_file = home / f".gitlabuser-{target_host}"
+    if not gitlab_user_file.exists():
+        fail(f"need {gitlab_user_file}")
+    
+    user = read_oneliner(gitlab_user_file)
+    token = get_gitlab_token(target_host, user)
+    create_gitlab_repo(user, token, target_host, repo_name, description, args.private)
+    remote_url = f"ssh://git@{target_host}/{user}/{repo_name}"
+
+elif target_type == "ssh":
+    create_ssh_repo(target_host, parent_path, repo_name, description, args.private)
+    remote_url = f"ssh://{target_host}{parent_path}/{repo_name}"
+
+elif target_type == "custom":
+    create_ssh_repo(target_host, parent_path, repo_name, description, args.private, repo_link)
+    remote_url = f"ssh://{target_host}{parent_path}/{repo_name}"
+
+else:
+    fail("no target site specified")
+
+os.chdir(source_dir)
+
+status, _ = git_command("remote", "get-url", "origin")
+if status == 0:
+    warn("updating existing remote")
     git_command("remote", "rm", "origin")
-    status, _ = git_command("remote", "add", "origin", remote)
-    if status != 0:
-        fail(f"could not update remote origin to {remote}")
-status, _ = git_command("push", "-u", "origin", f"{main_branch}:{main_branch}")
+
+git_command("remote", "add", "origin", remote_url)
+
+status, output = git_command("push", "-u", "origin", current_branch)
 if status != 0:
-    fail(f"could not push {main_branch} to origin")
-if branch != main_branch:
-    status, _ = git_command("push", "-u", "origin", f"{branch}:{branch}")
-    if status != 0:
-        fail(f"could not push {branch} to origin")
+    fail(f"push to origin failed: {output}")
+
+print(f"Successfully created and pushed to {remote_url}")
