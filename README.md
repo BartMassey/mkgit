@@ -29,19 +29,31 @@ To install the Python version of mkgit:
 sudo cp mkgit.py /usr/local/bin/mkgit
 sudo chmod +x /usr/local/bin/mkgit
 
-# Install site configuration files (optional)
-sudo cp mkgit-* /usr/local/bin/
-sudo chmod +x /usr/local/bin/mkgit-*
+# Install site configuration files (optional, recommended)
+sudo mkdir -p /usr/local/share/mkgit
+sudo cp mkgit-* /usr/local/share/mkgit/
 ```
 
-The site configuration files (like `mkgit-big-site` and `mkgit-little-site`) 
-must be in the same directory as the `mkgit` executable for custom
-site support to work. These files contain variable assignments like:
+Site configuration files (like `mkgit-big-site` and `mkgit-little-site`) 
+are searched for in these locations:
+
+1. Directory specified by `MKGIT_SITE_DIR` environment variable
+2. `/usr/local/share/mkgit/` (default)
+3. Same directory as the `mkgit` executable (fallback)
+
+These files contain variable assignments like:
 
 ```
 GITHOST=big-site.example.org
 PARENT=/storage/git
 REPOLINK=/var/git-links
+```
+
+To use a custom location for site files:
+
+```bash
+export MKGIT_SITE_DIR=/path/to/my/mkgit-sites
+mkgit -X mysite myrepo
 ```
 
 ## Usage Examples

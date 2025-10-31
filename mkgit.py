@@ -53,12 +53,24 @@ def git_command(*args, verbose=True):
 
 
 def find_site_scripts():
-    """Find site scripts in script directory."""
-    script_dir = Path(__file__).parent
+    """Find site scripts in site directory."""
+    # Check environment variable first
+    env_dir = os.environ.get('MKGIT_SITE_DIR')
+    if env_dir:
+        script_dirs = [Path(env_dir)]
+    else:
+        # Default search paths
+        script_dirs = [
+            Path("/usr/local/share/mkgit"),
+            Path(__file__).parent  # fallback to script directory
+        ]
+    
     scripts = []
-    for file in script_dir.glob("mkgit-*"):
-        if file.is_file() and os.access(file, os.X_OK):
-            scripts.append(file.name)
+    for script_dir in script_dirs:
+        if script_dir.exists() and script_dir.is_dir():
+            for file in script_dir.glob("mkgit-*"):
+                if file.is_file():
+                    scripts.append(file.name)
     return scripts
 
 
@@ -214,13 +226,30 @@ if args.site:
     else:
         target_type = "custom"
         site_name = args.site
-        script_path = Path(__file__).parent / f"mkgit-{site_name}"
-        if not script_path.exists():
+        
+        # Find site configuration file using same logic as find_site_scripts
+        env_dir = os.environ.get('MKGIT_SITE_DIR')
+        if env_dir:
+            search_dirs = [Path(env_dir)]
+        else:
+            search_dirs = [
+                Path("/usr/local/share/mkgit"),
+                Path(__file__).parent  # fallback to script directory
+            ]
+        
+        script_path = None
+        for search_dir in search_dirs:
+            potential_path = search_dir / f"mkgit-{site_name}"
+            if potential_path.exists():
+                script_path = potential_path
+                break
+        
+        if script_path is None or not script_path.exists():
             fail(f"unknown site script: mkgit-{site_name}")
         
         script_vars = {}
         try:
-            with open(script_path, 'r') as f:
+            with open(str(script_path), 'r') as f:
                 for line in f:
                     line = line.strip()
                     if line and '=' in line and not line.startswith('#'):

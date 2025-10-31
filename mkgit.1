@@ -126,10 +126,21 @@ Other keywords correspond to site configuration files. A keyword of
 for example, would correspond to a configuration file
 of
 .IR "mkgit-foo" .
-Configuration files are always located in the same directory
-as
+Configuration files are searched for in this order:
+
+.IP \(bu 2
+Directory specified by
+.I MKGIT_SITE_DIR
+environment variable
+.IP \(bu 2
+.I /usr/local/share/mkgit/
+.IP \(bu 2
+Same directory as the
 .I mkgit
-itself. These files contain variable assignments such as:
+executable (fallback)
+.LP
+
+These files contain variable assignments such as:
 
 .PP
 .nf
