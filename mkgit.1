@@ -1,4 +1,4 @@
-.TH MKGIT 1 "2012/06/03"
+.TH MKGIT 1 "2025/10/30"
 .\" Copyright © 2012 Bart Massey
 .SH NAME
 mkgit \- create an upstream git repo and push to it
@@ -20,6 +20,15 @@ location, push the local repository up there, and set the
 local
 .B origin
 and tracking information to point at the new upstream.
+.PP
+Both
+.B mkgit
+(Python, primary implementation) and
+.B mkgit.sh
+(shell, legacy) versions are available. The examples below
+use
+.B mkgit
+as the primary interface.
 .PP
 The
 .I mkgit
@@ -112,18 +121,26 @@ access token of the target user on the target site. If the file does not
 exist, it will be created using the GitLab API if the user
 can give an access password.
 .PP
-Other keywords correspond to access scripts. A keyword of
+Other keywords correspond to site configuration files. A keyword of
 .IR foo ,
-for example, would correspond to an access script
+for example, would correspond to a configuration file
 of
 .IR "mkgit-foo" .
-Access scripts are always located in the same directory
+Configuration files are always located in the same directory
 as
 .I mkgit
-itself. These scripts are sourced by
-.IR mkgit ,
-and can set variables and execute shell code
-to facilitate setting up a repository.
+itself. These files contain variable assignments such as:
+
+.PP
+.nf
+    GITHOST=example.com
+    PARENT=/storage/git
+    REPOLINK=/var/git-links
+.fi
+.PP
+
+The Python version parses these files directly, while the
+shell version sources them.
 .SH EXAMPLES
 .PP
 .nf
@@ -134,6 +151,7 @@ to facilitate setting up a repository.
 Sets up a repository on GitHub. The target repository name is
 inferred from the source repository name, which is assumed
 to be the current directory.
+.PP
 .nf
 
     mkgit -p ssh://remote.example.com/var/cache/git/project.git /tmp/project
@@ -146,6 +164,20 @@ The repository is named
 is sourced from the Git working directory
 .IR "/tmp/project" ,
 and is not made public.
+.PP
+.nf
+
+    mkgit -d 'My project' -X gitlab my-project
+
+.fi
+Sets up a private GitLab repository on gitlab.com.
+.PP
+.nf
+
+    mkgit -F -X github
+
+.fi
+Forks an existing GitHub repository (origin becomes upstream).
 .\"
 .SH BUGS
 .PP
@@ -153,7 +185,7 @@ The implementation has not been thoroughly tested.
 .\"
 .SH LICENSE
 This software is available under the MIT License. See
-the file COPYING in the source distribution for license terms.
+the file LICENSE.txt in the source distribution for license terms.
 .\"
 .SH AUTHOR
 Bart Massey \fI<bart@cs.pdx.edu>\fP

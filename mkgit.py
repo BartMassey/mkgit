@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # Copyright © 2012 Bart Massey
 # [This program is licensed under the "MIT License"]
-# Please see the file COPYING in the source
+# Please see the file LICENSE.txt in the source
 # distribution of this software for license terms.
 
 import argparse
@@ -176,7 +176,7 @@ if args.site:
             if service == "github":
                 target_host = "github.com"
                 org = match.group(3) if match.group(3) else None
-            else:  # gitlab
+            elif service == "gitlab":
                 if match.group(3):
                     target_host = match.group(2)
                     org = match.group(3)
@@ -190,6 +190,8 @@ if args.site:
                 else:
                     target_host = "gitlab.com"
                     org = None
+            else:
+                fail(f"internal error: unknown service {service}")
             target_type = service
     elif args.site.startswith("ssh://"):
         target_type = "ssh"
@@ -218,13 +220,14 @@ if args.site:
         
         script_vars = {}
         try:
-            result = subprocess.run([str(script_path)], capture_output=True, text=True, check=True)
-            for line in result.stdout.strip().split('\n'):
-                if '=' in line:
-                    var, val = line.strip().split('=', 1)
-                    script_vars[var] = val
+            with open(script_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and '=' in line and not line.startswith('#'):
+                        var, val = line.split('=', 1)
+                        script_vars[var.strip()] = val.strip()
         except Exception as e:
-            fail(f"failed to execute site script: {e}")
+            fail(f"failed to read site script: {e}")
         
         target_host = script_vars.get('GITHOST')
         parent_path = script_vars.get('PARENT', '')
