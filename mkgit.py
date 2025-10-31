@@ -173,20 +173,38 @@ if args.site:
         match = re.match(r'^(github|gitlab)(?:-([^-]+)(?:-([^-]+))?)?$', args.site)
         if match:
             service = match.group(1)
-            if match.group(1) != match.group(2):
-                target_host = match.group(1)
-            else:
-                target_host = f"{service}.com"
-            org = match.group(4)
+            if service == "github":
+                target_host = "github.com"
+                org = match.group(3) if match.group(3) else None
+            else:  # gitlab
+                if match.group(3):
+                    target_host = match.group(2)
+                    org = match.group(3)
+                elif match.group(2):
+                    if '.' in match.group(2):
+                        target_host = match.group(2)
+                        org = None
+                    else:
+                        target_host = "gitlab.com"
+                        org = match.group(2)
+                else:
+                    target_host = "gitlab.com"
+                    org = None
             target_type = service
     elif args.site.startswith("ssh://"):
         target_type = "ssh"
         ssh_url = args.site
-        ssh_match = re.match(r'ssh://([^/]+)(/.+)/([^/]+?)(?:\.git)?/?$', ssh_url)
-        if ssh_match is not None:
-            target_host = ssh_match.group(1)
-            parent_path = ssh_match.group(2)
-            repo_name = ssh_match.group(3)
+        git_match = re.match(r'ssh://([^/]*)', ssh_url)
+        parent_match = re.match(r'ssh://[^/]*(/.*)/', ssh_url)
+        proj_match = re.match(r'ssh://[^/]*/.*/([^/]*\.git)$', ssh_url)
+        
+        if not proj_match:
+            proj_match = re.match(r'ssh://[^/]*/.*/([^/.]*)$', ssh_url)
+        
+        if git_match and parent_match and proj_match:
+            target_host = git_match.group(1)
+            parent_path = parent_match.group(1)
+            repo_name = proj_match.group(1)
             if not repo_name.endswith('.git'):
                 repo_name += '.git'
         else:
@@ -214,6 +232,26 @@ if args.site:
         
         if not target_host:
             fail("site script must set GITHOST")
+
+# Handle SSH URLs as positional arguments (when no -X flag)
+if target_type is None and args.repo and args.repo.startswith("ssh://"):
+    ssh_url = args.repo
+    git_match = re.match(r'ssh://([^/]*)', ssh_url)
+    parent_match = re.match(r'ssh://[^/]*(/.*)/', ssh_url)
+    proj_match = re.match(r'ssh://[^/]*/.*/([^/]*\.git)$', ssh_url)
+    
+    if not proj_match:
+        proj_match = re.match(r'ssh://[^/]*/.*/([^/.]*)$', ssh_url)
+    
+    if git_match and parent_match and proj_match:
+        target_type = "ssh"
+        target_host = git_match.group(1)
+        parent_path = parent_match.group(1)
+        repo_name = proj_match.group(1)
+        if not repo_name.endswith('.git'):
+            repo_name += '.git'
+    else:
+        fail(f"bad SSH URL: {ssh_url}")
 
 def create_github_repo(user, token, org, repo, description, private):
     """Create GitHub repository via API."""
@@ -329,7 +367,15 @@ def create_gitlab_repo(user, token, host, repo, description, private):
             error_body = response.read().decode()
             try:
                 error_data = json.loads(error_body)
-                message = error_data.get("message", "Unknown error")
+                if isinstance(error_data, dict):
+                    if "error_description" in error_data:
+                        message = error_data["error_description"]
+                    elif "message" in error_data:
+                        message = error_data["message"]
+                    else:
+                        message = str(error_data)
+                else:
+                    message = str(error_data)
             except:
                 message = error_body[:200]
             fail(f"GitLab API error: {message}")
