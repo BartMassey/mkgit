@@ -1,3 +1,33 @@
+Metadata-Version: 2.4
+Name: mkgit
+Version: 1.0.0
+Summary: Create upstream git repositories on GitHub, GitLab, and custom hosts
+Author-email: Bart Massey <bart@cs.pdx.edu>
+Maintainer-email: Bart Massey <bart@cs.pdx.edu>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/BartMassey/mkgit
+Project-URL: Repository, https://github.com/BartMassey/mkgit
+Project-URL: Bug Tracker, https://github.com/BartMassey/mkgit/issues
+Project-URL: Documentation, https://github.com/BartMassey/mkgit/blob/main/README.md
+Keywords: git,github,gitlab,repository,cli
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Version Control :: Git
+Classifier: Topic :: Software Development :: Version Control
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Dynamic: license-file
+
 # mkgit
 Copyright (c) 2012 Bart Massey
 
@@ -71,18 +101,10 @@ mkgit -X mysite myrepo
 The `pip install` method provides:
 
 - **Automatic command installation**: Creates `mkgit` command in PATH
-- **Self-contained**: All functionality included in single mkgit.py file
+- **Self-contained**: All functionality included in package
 - **Easy updates**: `pip install --upgrade mkgit` for new versions
 - **Dependency management**: Handles Python package requirements
 - **Platform independence**: Works across all platforms consistently
-
-## Development
-
-The project uses a single-source layout for easier maintenance:
-- **mkgit.py**: Single source of truth for all functionality
-- **No src/ directory**: Clean root-level package structure
-- **Both methods work**: Copy method and pip install use same code
-- **PyPI ready**: Package builds with `python3 -m build` and uploads with twine
 
 Site configuration files (like `mkgit-big-site` and `mkgit-little-site`) 
 are searched for in these locations:

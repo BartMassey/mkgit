@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mkgit"
+version = "1.0.0"
+description = "Create upstream git repositories on GitHub, GitLab, and custom hosts"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "Bart Massey", email = "bart@cs.pdx.edu"},
+]
+maintainers = [
+    {name = "Bart Massey", email = "bart@cs.pdx.edu"},
+]
+keywords = ["git", "github", "gitlab", "repository", "cli"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development :: Version Control",
+]
+requires-python = ">=3.8"
+dependencies = [
+    # No external dependencies - uses only standard library
+]
+
+[project.urls]
+Homepage = "https://github.com/BartMassey/mkgit"
+Repository = "https://github.com/BartMassey/mkgit"
+"Bug Tracker" = "https://github.com/BartMassey/mkgit/issues"
+Documentation = "https://github.com/BartMassey/mkgit/blob/main/README.md"
+
+[project.scripts]
+mkgit = "mkgit:main"
+
+[tool.setuptools.packages.find]
+# Explicitly tell setuptools to not look for packages
+where = []
+
+[tool.setuptools.package-dir]
+# Explicitly tell setuptools where to find modules
+"" = "."
+
+[tool.setuptools.package-data]
+"*" = ["mkgit-*"]
+
+[tool.wheel]
+universal = false
