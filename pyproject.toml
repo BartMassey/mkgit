@@ -44,16 +44,8 @@ Documentation = "https://github.com/BartMassey/mkgit/blob/main/README.md"
 [project.scripts]
 mkgit = "mkgit:main"
 
-[tool.setuptools.packages.find]
-# Explicitly tell setuptools to not look for packages
-where = []
-
-[tool.setuptools.package-dir]
-# Explicitly tell setuptools where to find modules
-"" = "."
-
-[tool.setuptools.package-data]
-"*" = ["mkgit-*"]
+[tool.setuptools]
+py-modules = ["mkgit"]
 
 [tool.wheel]
 universal = false

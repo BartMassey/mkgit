@@ -44,8 +44,9 @@ pip install .
 
 ## Site Configuration
 
-Site configuration files (like `mkgit-big-site` and `mkgit-little-site`) 
-are included in the package and searched for in this order:
+Site configuration files (see `examples/mkgit-big-site` and
+`examples/mkgit-little-site` for examples) are searched for in
+this order:
 
 1. Directory specified by `MKGIT_SITE_DIR` environment variable
 2. `/usr/local/share/mkgit/` (default)
@@ -84,8 +85,9 @@ The project uses a single-source layout for easier maintenance:
 - **Both methods work**: Copy method and pip install use same code
 - **PyPI ready**: Package builds with `python3 -m build` and uploads with twine
 
-Site configuration files (like `mkgit-big-site` and `mkgit-little-site`) 
-are searched for in these locations:
+Site configuration files (see `examples/mkgit-big-site` and
+`examples/mkgit-little-site` for examples) are searched for in
+these locations:
 
 1. Directory specified by `MKGIT_SITE_DIR` environment variable
 2. `/usr/local/share/mkgit/` (default)
@@ -208,9 +210,9 @@ Available sites can be listed with `--list-sites`.
 
 The "magic -X modes" can be customized by putting site variable
 definitions in `mkgit-<site>` scripts in the same directory as
-the `mkgit` executable. See `mkgit-big-site` and `mkgit-little-site` for
-examples. All of this is fragile and a bit experimental:
-patches welcome.
+the `mkgit` executable. See `examples/mkgit-big-site` and
+`examples/mkgit-little-site` for examples. All of this is fragile
+and a bit experimental: patches welcome.
 
 Each site configuration file can set these variables:
 - `GITHOST` - Target hostname

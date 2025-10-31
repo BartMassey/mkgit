@@ -2,7 +2,6 @@ include README.md
 include LICENSE.txt
 include mkgit.1
 include mkgit.py
-include mkgit-*
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 recursive-exclude * .git*
