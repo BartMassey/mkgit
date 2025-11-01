@@ -13,7 +13,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, NoReturn, Any, Union
 import http.client as client
 
 
@@ -44,7 +44,7 @@ class GitContext:
 
 
 # Utility functions
-def fail(msg: str) -> None:
+def fail(msg: str) -> NoReturn:
     """Print error message and exit with status 1."""
     print("mkgit:", msg, file=sys.stderr)
     exit(1)
@@ -274,7 +274,7 @@ class GitHubService:
             "User-Agent": "mkgit"
         }
 
-        data = {
+        data: Dict[str, Any] = {
             "name": git_ctx.repo_name.replace('.git', ''),
             "description": git_ctx.description
         }
@@ -425,6 +425,8 @@ class SSHService:
 
     def create_repository(self, site_config: SiteConfig, git_ctx: GitContext, private: bool) -> None:
         """Create repository on remote host via SSH."""
+        if site_config.parent_path is None:
+            fail("SSH site configuration missing parent_path")
         parent_q = shell_escape(site_config.parent_path)
         repo_q = shell_escape(git_ctx.repo_name)
         desc_q = shell_escape(git_ctx.description)
@@ -453,6 +455,8 @@ fi"""
 
     def get_repository_url(self, site_config: SiteConfig, git_ctx: GitContext) -> str:
         """Get repository URL for SSH."""
+        if site_config.parent_path is None:
+            fail("SSH site configuration missing parent_path")
         return f"ssh://{site_config.host}{site_config.parent_path}/{git_ctx.repo_name}"
 
 
@@ -461,7 +465,7 @@ class ServiceFactory:
     """Factory for creating appropriate service instances."""
 
     @staticmethod
-    def create_service(site_type: str, auth_handler: AuthHandler):
+    def create_service(site_type: str, auth_handler: AuthHandler) -> Union[GitHubService, GitLabService, SSHService]:
         """Create service instance based on site type."""
         if site_type == "github":
             return GitHubService(auth_handler)
@@ -562,7 +566,7 @@ def parse_site_config(args, repo_arg: str) -> Tuple[Optional[SiteConfig], str]:
     # Handle SSH URL as positional argument
     if not args.site and repo_arg and repo_arg.startswith("ssh://"):
         host, parent_path, parsed_repo = parse_ssh_url(repo_arg)
-        if not host:
+        if not host or not parsed_repo:
             fail(f"bad SSH URL: {repo_arg}")
         return SiteConfig(
             type="ssh",
@@ -577,7 +581,7 @@ def parse_site_config(args, repo_arg: str) -> Tuple[Optional[SiteConfig], str]:
     # SSH URL via -X flag
     if args.site.startswith("ssh://"):
         host, parent_path, parsed_repo = parse_ssh_url(args.site)
-        if not host:
+        if not host or not parsed_repo:
             fail(f"bad SSH URL: {args.site}")
         return SiteConfig(
             type="ssh",
@@ -599,7 +603,7 @@ def parse_site_config(args, repo_arg: str) -> Tuple[Optional[SiteConfig], str]:
     return SiteConfig(
         type="custom",
         host=target_host,
-        parent_path=script_vars.get('PARENT', ''),
+        parent_path=script_vars.get('PARENT'),
         repo_link=script_vars.get('REPOLINK')
     ), repo_name
 
@@ -656,7 +660,7 @@ def setup_git_context(args) -> GitContext:
     )
 
 
-def main():
+def main() -> None:
     """Main entry point for the mkgit command."""
     ap = argparse.ArgumentParser(description="Create a new upstream git repository")
     ap.add_argument(
