@@ -11,41 +11,44 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional, List, Dict, Tuple, Any, NoReturn
 import http.client as client
 
 
-# =============================================================================
-# Utility Functions
-# =============================================================================
+# Constants
+DEFAULT_SITE_DIRS = [Path("/usr/local/share/mkgit")]
+VALID_MAIN_BRANCHES = ["master", "main"]
+GITHUB_API_HOST = "api.github.com"
 
-def fail(msg):
+
+# Utility functions
+def fail(msg: str) -> NoReturn:
     """Print error message and exit with status 1."""
     print("mkgit:", msg, file=sys.stderr)
     exit(1)
 
 
-def warn(msg):
+def warn(msg: str) -> None:
     """Print warning message to stderr."""
     print("mkgit: warning:", msg, file=sys.stderr)
 
 
-def shell_escape(s):
-    """Escape special characters for shell commands."""
+def shell_escape(s: str) -> str:
+    """Escape special characters for shell."""
     return s.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
 
 
-# =============================================================================
-# Authentication Handler
-# =============================================================================
+# Authentication management
 
 class AuthHandler:
     """Handles authentication for different git services."""
     
-    def __init__(self, home_dir):
-        self.home = Path(home_dir)
+    def __init__(self, home_dir: Path) -> None:
+        self.home = home_dir
     
-    def read_oneliner(self, path):
+    def read_oneliner(self, path: Path) -> str:
         """Read and return contents of single-line file."""
         try:
             with open(path, "r") as f:
@@ -56,7 +59,7 @@ class AuthHandler:
         except Exception as e:
             fail(f"error reading {path}: {e}")
     
-    def get_github_credentials(self):
+    def get_github_credentials(self) -> Tuple[str, str]:
         """Get GitHub username and token."""
         user_file = self.home / ".githubuser"
         token_file = self.home / ".github-oauthtoken"
@@ -68,7 +71,7 @@ class AuthHandler:
         
         return self.read_oneliner(user_file), self.read_oneliner(token_file)
     
-    def get_gitlab_credentials(self, host):
+    def get_gitlab_credentials(self, host: str) -> Tuple[str, str]:
         """Get GitLab username and handle token creation."""
         user_file = self.home / f".gitlabuser-{host}"
         if not user_file.exists():
@@ -79,9 +82,9 @@ class AuthHandler:
         
         return user, token
     
-    def _get_or_create_gitlab_token(self, host, user):
+    def _get_or_create_gitlab_token(self, host: str, user: str) -> str:
         """Get existing GitLab token or create a new one."""
-        token_file = self.home / f".gitlabtoken-{host}"
+        token_file = self.home / f".gitlab-token-{host}"
         
         if token_file.exists():
             return self.read_oneliner(token_file)
@@ -114,17 +117,43 @@ class AuthHandler:
                 
         except Exception as e:
             fail(f"GitLab authentication error: {e}")
+        
+        # Need to authenticate to get token
+        password = getpass.getpass(f"GitLab password for {user}@{host}: ")
+        
+        try:
+            conn = client.HTTPSConnection(host)
+            data = {
+                "login": user,
+                "password": password
+            }
+            body = json.dumps(data)
+            conn.request("POST", "/api/v4/session", body=body, headers={"Content-Type": "application/json"})
+            response = conn.getresponse()
+            
+            if response.status == 201:
+                response_data = json.loads(response.read().decode())
+                private_token = response_data.get("private_token")
+                if private_token:
+                    with open(token_file, "w") as f:
+                        f.write(private_token)
+                    os.chmod(token_file, 0o600)
+                    return private_token
+                else:
+                    fail("no private token in response")
+            else:
+                fail("GitLab authentication failed")
+                
+        except Exception as e:
+            fail(f"GitLab authentication error: {e}")
 
 
-# =============================================================================
-# Git Operations Handler
-# =============================================================================
-
+# Git operations management
 class GitOperations:
     """Handles git operations and repository management."""
     
     @staticmethod
-    def execute_git_command(*args, verbose=True):
+    def execute_git_command(*args, verbose: bool = True) -> Tuple[int, str]:
         """Execute git command and return status, stdout."""
         command = ["git", *args]
         try:
@@ -138,7 +167,7 @@ class GitOperations:
             return 1, ""
     
     @staticmethod
-    def get_current_branch():
+    def get_current_branch() -> str:
         """Get the current git branch."""
         status, branch_output = GitOperations.execute_git_command("branch")
         if status != 0:
@@ -159,7 +188,7 @@ class GitOperations:
         return branch
     
     @staticmethod
-    def get_description(default_description):
+    def get_description(default_description: Optional[str]) -> str:
         """Get repository description from git log or use default."""
         if default_description:
             return default_description
@@ -168,14 +197,15 @@ class GitOperations:
             branch = GitOperations.get_current_branch()
             status, desc_output = GitOperations.execute_git_command("log", "--pretty=%s", branch)
             if status == 0 and desc_output.strip():
-                return desc_output.strip().split('\n')[-1]
+                result = desc_output.strip().split('\n')[-1]
+                return result if result else "Repository"
         except:
             pass
         
-        return default_description or "Repository"
+        return "Repository"
     
     @staticmethod
-    def setup_remote(repo_url, source_dir):
+    def setup_remote(repo_url: str, source_dir: Path) -> None:
         """Add or update origin remote."""
         original_dir = os.getcwd()
         try:
@@ -191,7 +221,7 @@ class GitOperations:
             os.chdir(original_dir)
     
     @staticmethod
-    def push_to_remote(branch, source_dir):
+    def push_to_remote(branch: str, source_dir: Path) -> None:
         """Push to remote and set upstream."""
         original_dir = os.getcwd()
         try:
@@ -203,15 +233,12 @@ class GitOperations:
             os.chdir(original_dir)
 
 
-# =============================================================================
-# URL Parser
-# =============================================================================
-
+# URL parsing
 class URLParser:
     """Handles parsing of different URL formats."""
     
     @staticmethod
-    def parse_ssh_url(ssh_url):
+    def parse_ssh_url(ssh_url: str) -> Tuple[str, str, str]:
         """Parse SSH URL and return host, parent path, and repo name."""
         git_match = re.match(r'ssh://([^/]*)', ssh_url)
         parent_match = re.match(r'ssh://[^/]*(/.*)/', ssh_url)
@@ -227,11 +254,12 @@ class URLParser:
             if not repo_name.endswith('.git'):
                 repo_name += '.git'
             return host, parent_path, repo_name
-        else:
-            fail(f"bad SSH URL: {ssh_url}")
+        
+        # If we get here, the URL was malformed
+        fail(f"bad SSH URL: {ssh_url}")
     
     @staticmethod
-    def parse_site_arguments(site_arg):
+    def parse_site_arguments(site_arg: Optional[str]) -> Tuple[Optional[str], Dict[str, Any]]:
         """Parse -X site arguments and return service type and configuration."""
         if not site_arg:
             return None, {}
@@ -240,7 +268,7 @@ class URLParser:
             match = re.match(r'^(github|gitlab)(?:-([^-]+)(?:-([^-]+))?)?$', site_arg)
             if match:
                 service = match.group(1)
-                config = {}
+                config: Dict[str, Any] = {}
                 
                 if service == "github":
                     config["host"] = "github.com"
@@ -268,24 +296,24 @@ class URLParser:
         
         else:
             return "custom", {"site_name": site_arg}
+        
+        # This should not be reachable - all cases should be handled above
+        assert False, f"Unhandled site argument format: {site_arg}"
     
     @staticmethod
-    def parse_repo_name(repo_name):
+    def parse_repo_name(repo_name: Optional[str]) -> Optional[str]:
         """Parse and normalize repository name."""
         if not repo_name:
             return None
         return repo_name if repo_name.endswith('.git') else repo_name + '.git'
 
 
-# =============================================================================
-# Site Configuration
-# =============================================================================
-
+# Site directory management
 class SiteConfiguration:
     """Handles site configuration and custom site scripts."""
     
     @staticmethod
-    def find_site_scripts():
+    def find_site_scripts() -> List[str]:
         """Find site scripts in site directory."""
         env_dir = os.environ.get('MKGIT_SITE_DIR')
         if env_dir:
@@ -305,7 +333,7 @@ class SiteConfiguration:
         return scripts
     
     @staticmethod
-    def list_sites():
+    def list_sites() -> List[str]:
         """Return list of available site options."""
         sites = ["github", "gitlab"]
         site_scripts = SiteConfiguration.find_site_scripts()
@@ -315,7 +343,7 @@ class SiteConfiguration:
         return sites
     
     @staticmethod
-    def load_site_config(site_name):
+    def load_site_config(site_name: str) -> Dict[str, Optional[str]]:
         """Load custom site configuration."""
         env_dir = os.environ.get('MKGIT_SITE_DIR')
         if env_dir:
@@ -354,84 +382,88 @@ class SiteConfiguration:
         }
 
 
-# =============================================================================
-# Repository Configuration
-# =============================================================================
+# Repository creation
+# Site configuration parsing
 
+@dataclass
 class RepositoryConfig:
-    """Handles repository configuration and target determination."""
+    """Repository configuration data structure."""
+    target_type: str
+    target_host: str
+    org: Optional[str] = None
+    parent_path: Optional[str] = None
+    repo_link: Optional[str] = None
+    repo_name: Optional[str] = None
     
-    def __init__(self, args):
-        self.args = args
-        self.target_type = None
-        self.target_host = None
-        self.org = None
-        self.parent_path = None
-        self.repo_link = None
-        self.repo_name = None
-        
-        self._parse_target()
-    
-    def _parse_target(self):
-        """Parse target configuration from arguments."""
+    @classmethod
+    def from_args(cls, args: Any) -> 'RepositoryConfig':
+        """Create RepositoryConfig from command line arguments."""
         # Handle site-specific arguments
-        if self.args.site:
-            self._parse_site_arguments()
+        if args.site:
+            return cls._parse_site_arguments(args)
         # Handle SSH URLs as positional arguments
-        elif self.args.repo and self.args.repo.startswith("ssh://"):
-            self._parse_ssh_url(self.args.repo)
+        elif args.repo and args.repo.startswith("ssh://"):
+            return cls._parse_ssh_url(args.repo)
         else:
             fail("no target site specified")
-        
-        # Set repository name
-        if not self.repo_name:
-            self.repo_name = URLParser.parse_repo_name(self.args.repo or Path.cwd().name)
     
-    def _parse_site_arguments(self):
+    @classmethod
+    def _parse_site_arguments(cls, args: Any) -> 'RepositoryConfig':
         """Parse -X site arguments."""
-        if not self.args.site:
+        if not args.site:
             fail("no site specified")
             
-        service, config = URLParser.parse_site_arguments(self.args.site)
+        service, config = URLParser.parse_site_arguments(args.site)
         
         if service in ["github", "gitlab"]:
-            self.target_type = service
-            self.target_host = config["host"]
-            self.org = config["org"]
+            return cls(
+                target_type=service,
+                target_host=config["host"],
+                org=config["org"]
+            )
         
         elif service == "ssh":
-            self.target_type = "ssh"
-            self.target_host = config["host"]
-            self.parent_path = config["parent_path"]
-            self.repo_name = config["repo_name"]
+            return cls(
+                target_type="ssh",
+                target_host=config["host"],
+                parent_path=config["parent_path"],
+                repo_name=config["repo_name"]
+            )
         
         elif service == "custom":
-            self.target_type = "custom"
             site_config = SiteConfiguration.load_site_config(config["site_name"])
-            self.target_host = site_config["host"]
-            self.parent_path = site_config["parent_path"]
-            self.repo_link = site_config["repo_link"]
-            
-            if not self.target_host:
+            if not site_config["host"]:
                 fail("site script must set GITHOST")
+            return cls(
+                target_type="custom",
+                target_host=site_config["host"],
+                parent_path=site_config["parent_path"],
+                repo_link=site_config["repo_link"]
+            )
+        
+        # This should not be reachable - all services should be handled above
+        assert False, f"Unhandled service type: {service}"
     
-    def _parse_ssh_url(self, ssh_url):
+    @classmethod
+    def _parse_ssh_url(cls, ssh_url: str) -> 'RepositoryConfig':
         """Parse SSH URL from positional arguments."""
-        self.target_type = "ssh"
-        self.target_host, self.parent_path, self.repo_name = URLParser.parse_ssh_url(ssh_url)
+        host, parent_path, repo_name = URLParser.parse_ssh_url(ssh_url)
+        return cls(
+            target_type="ssh",
+            target_host=host,
+            parent_path=parent_path,
+            repo_name=repo_name
+        )
 
 
-# =============================================================================
-# Service Classes
-# =============================================================================
-
+# Service classes
 class GitHubService:
     """Handles GitHub-specific repository operations."""
     
-    def __init__(self, auth_handler):
+    def __init__(self, auth_handler: AuthHandler) -> None:
         self.auth = auth_handler
     
-    def create_repository(self, config, description, private):
+    def create_repository(self, config: RepositoryConfig, description: str, private: bool) -> bool:
         """Create GitHub repository via API."""
         user, token = self.auth.get_github_credentials()
         
@@ -441,13 +473,13 @@ class GitHubService:
             "User-Agent": "mkgit"
         }
         
-        data = {
-            "name": config.repo_name.replace('.git', ''),
+        data: Dict[str, Any] = {
+            "name": config.repo_name.replace('.git', '') if config.repo_name else '',
             "description": description
         }
         
         if private:
-            data["private"] = True
+            data["private"] = private
         
         try:
             if config.org:
@@ -468,7 +500,7 @@ class GitHubService:
         except Exception as e:
             fail(f"GitHub connection error: {e}")
     
-    def fork_repository(self, config):
+    def fork_repository(self, config: RepositoryConfig) -> str:
         """Fork GitHub repository via API."""
         user, token = self.auth.get_github_credentials()
         
@@ -512,14 +544,14 @@ class GitHubService:
         except Exception as e:
             fail(f"GitHub fork error: {e}")
     
-    def get_repository_url(self, config):
+    def get_repository_url(self, config: RepositoryConfig) -> str:
         """Get repository URL for GitHub."""
         user, _ = self.auth.get_github_credentials()
         gh_org = config.org if config.org else user
         return f"ssh://git@github.com/{gh_org}/{config.repo_name}"
     
-    def _handle_api_error(self, response):
-        """Handle API error responses."""
+    def _handle_api_error(self, response: Any) -> NoReturn:
+        """Handle API error responses (never returns)."""
         error_body = response.read().decode()
         try:
             error_data = json.loads(error_body)
@@ -535,10 +567,10 @@ class GitHubService:
 class GitLabService:
     """Handles GitLab-specific repository operations."""
     
-    def __init__(self, auth_handler):
+    def __init__(self, auth_handler: AuthHandler) -> None:
         self.auth = auth_handler
     
-    def create_repository(self, config, description, private):
+    def create_repository(self, config: RepositoryConfig, description: str, private: bool) -> bool:
         """Create GitLab repository via API."""
         user, token = self.auth.get_gitlab_credentials(config.target_host)
         
@@ -547,8 +579,8 @@ class GitLabService:
             "Content-Type": "application/json"
         }
         
-        data = {
-            "name": config.repo_name.replace('.git', ''),
+        data: Dict[str, Any] = {
+            "name": config.repo_name.replace('.git', '') if config.repo_name else '',
             "visibility": "private" if private else "public",
             "description": description
         }
@@ -567,17 +599,17 @@ class GitLabService:
         except Exception as e:
             fail(f"GitLab connection error: {e}")
     
-    def fork_repository(self, config):
-        """Fork GitLab repository - not supported."""
+    def fork_repository(self, config: RepositoryConfig) -> str:
+        """Fork GitLab repository - not supported (never returns)."""
         fail("forking not supported for GitLab")
     
-    def get_repository_url(self, config):
+    def get_repository_url(self, config: RepositoryConfig) -> str:
         """Get repository URL for GitLab."""
         user, _ = self.auth.get_gitlab_credentials(config.target_host)
         return f"ssh://git@{config.target_host}/{user}/{config.repo_name}"
     
-    def _handle_api_error(self, response):
-        """Handle API error responses."""
+    def _handle_api_error(self, response: Any) -> NoReturn:
+        """Handle API error responses (never returns)."""
         error_body = response.read().decode()
         try:
             error_data = json.loads(error_body)
@@ -598,8 +630,10 @@ class GitLabService:
 class SSHService:
     """Handles SSH-based repository operations."""
     
-    def create_repository(self, config, description, private):
+    def create_repository(self, config: RepositoryConfig, description: str, private: bool) -> bool:
         """Create repository on remote host via SSH."""
+        assert config.parent_path is not None, "SSH parent_path is required"
+        assert config.repo_name is not None, "SSH repo_name is required"
         parent_q = shell_escape(config.parent_path)
         repo_q = shell_escape(config.repo_name)
         desc_q = shell_escape(description)
@@ -617,30 +651,33 @@ class SSHService:
     fi"""
         
         try:
+            if not config.target_host:
+                fail("SSH host is required")
             result = subprocess.run(["ssh", "-x", config.target_host, "sh"], 
                                   input=ssh_script, text=True, check=True, capture_output=True)
             return True
         except subprocess.CalledProcessError as e:
-            fail(f"SSH to {config.target_host} failed: {e.stderr}")
+            if config.target_host:
+                fail(f"SSH to {config.target_host} failed: {e.stderr}")
+            else:
+                fail("SSH host not configured")
+            return False
     
-    def fork_repository(self, config):
-        """Fork SSH repository - not supported."""
+    def fork_repository(self, config: RepositoryConfig) -> str:
+        """Fork SSH repository - not supported (never returns)."""
         fail("forking not supported for SSH repositories")
     
-    def get_repository_url(self, config):
+    def get_repository_url(self, config: RepositoryConfig) -> str:
         """Get repository URL for SSH."""
         return f"ssh://{config.target_host}{config.parent_path}/{config.repo_name}"
 
 
-# =============================================================================
-# Service Factory
-# =============================================================================
-
+# Service factory
 class ServiceFactory:
     """Factory for creating appropriate service instances."""
     
     @staticmethod
-    def create_service(target_type, auth_handler):
+    def create_service(target_type: str, auth_handler: AuthHandler) -> Any:
         """Create service instance based on target type."""
         if target_type == "github":
             return GitHubService(auth_handler)
@@ -656,7 +693,7 @@ class ServiceFactory:
 # Main Function
 # =============================================================================
 
-def parse_arguments():
+def parse_arguments() -> Any:
     """Parse command line arguments."""
     ap = argparse.ArgumentParser(description="Create a new upstream git repository")
     ap.add_argument(
@@ -695,7 +732,7 @@ def parse_arguments():
     return ap.parse_args()
 
 
-def list_available_sites():
+def list_available_sites() -> None:
     """List available sites and usage examples."""
     sites = SiteConfiguration.list_sites()
     print("Available sites:", ", ".join(sites), file=sys.stderr)
@@ -703,10 +740,10 @@ def list_available_sites():
     print("  mkgit -X github myrepo", file=sys.stderr)
     print("  mkgit -X gitlab myrepo", file=sys.stderr)
     print("  mkgit -X github-org myrepo", file=sys.stderr)
-    print("  mkgit ssh://user@host/path/repo.git", file=sys.stderr)
+    print("  ssh://user@host/path/repo.git", file=sys.stderr)
 
 
-def setup_working_directory(args):
+def setup_working_directory(args: Any) -> Path:
     """Setup and validate working directory."""
     original_dir = Path.cwd()
     
@@ -740,7 +777,7 @@ def main():
     source_dir = setup_working_directory(args)
     
     # Get repository configuration
-    config = RepositoryConfig(args)
+    config = RepositoryConfig.from_args(args)
     
     # Validate current branch
     current_branch = git_ops.get_current_branch()
@@ -765,9 +802,6 @@ def main():
     
     print(f"Successfully created and pushed to {repo_url}")
 
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
