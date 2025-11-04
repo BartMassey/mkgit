@@ -184,7 +184,7 @@ class GitOperations:
         """Setup git remote and push."""
         os.chdir(source_dir)
 
-        status, _ = git_command("remote", "get-url", "origin")
+        status, _ = git_command("remote", "get-url", "origin", verbose=False)
         if status == 0:
             warn("updating existing remote")
             git_command("remote", "rm", "origin")
