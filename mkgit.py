@@ -486,48 +486,63 @@ def shell_escape(s: str) -> str:
 # Site configuration parsing
 def parse_github_gitlab_site(site_arg: str) -> SiteConfig:
     """Parse github/gitlab site argument string."""
-    match = re.match(r'^(github|gitlab)(?:-([^-]+)(?:-([^-]+))?)?$', site_arg)
+    match = re.match(r'^(github|gitlab)(.*)$', site_arg)
     if not match:
         fail(f"invalid site format: {site_arg}")
 
     service = match.group(1)
+    suffix = match.group(2)  # Everything after "github" or "gitlab"
 
     if service == "github":
+        # github -> no org
+        # github-org -> org is "org"
+        if suffix.startswith('-'):
+            suffix = suffix[1:]  # strip leading hyphen
         return SiteConfig(
             type="github",
             host="github.com",
-            org=match.group(3) if match.group(3) else None
+            org=suffix if suffix else None
         )
     elif service == "gitlab":
-        # Parse gitlab-host-org or gitlab-org patterns
-        if match.group(3):
-            # gitlab-host-org
-            return SiteConfig(
-                type="gitlab",
-                host=match.group(2),
-                org=match.group(3)
-            )
-        elif match.group(2):
-            if '.' in match.group(2):
-                # gitlab-host
-                return SiteConfig(
-                    type="gitlab",
-                    host=match.group(2),
-                    org=None
-                )
-            else:
-                # gitlab-org
-                return SiteConfig(
-                    type="gitlab",
-                    host="gitlab.com",
-                    org=match.group(2)
-                )
-        else:
-            # plain gitlab
+        # Parse gitlab suffix for host and org
+        if not suffix:
+            # plain gitlab -> gitlab.com
             return SiteConfig(
                 type="gitlab",
                 host="gitlab.com",
                 org=None
+            )
+
+        # Handle leading hyphen or dot
+        if suffix.startswith('-'):
+            suffix = suffix[1:]  # strip leading hyphen
+        elif suffix.startswith('.'):
+            # gitlab.foo.com -> treat as hostname shorthand
+            suffix = service + suffix  # reconstruct full hostname
+
+        # Now parse the suffix
+        # Check if suffix has both a dot and a hyphen
+        parts = suffix.split('-', 1)
+        if len(parts) == 2 and '.' in parts[0]:
+            # gitlab.foo.com-org OR gitlab-gitlab.foo.com-org -> host=gitlab.foo.com, org=org
+            return SiteConfig(
+                type="gitlab",
+                host=parts[0],
+                org=parts[1]
+            )
+        elif '.' in suffix:
+            # gitlab.foo.com OR gitlab-gitlab.foo.com -> host=gitlab.foo.com
+            return SiteConfig(
+                type="gitlab",
+                host=suffix,
+                org=None
+            )
+        else:
+            # gitlab-org OR org -> gitlab.com with org
+            return SiteConfig(
+                type="gitlab",
+                host="gitlab.com",
+                org=suffix
             )
     else:
         fail(f"internal error: unknown service {service}")
