@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mkgit"
-version = "1.0.0"
+version = "2.0.0"
 description = "Create upstream git repositories on GitHub, GitLab, and custom hosts"
 readme = "README.md"
 license = "MIT"
