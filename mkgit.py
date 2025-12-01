@@ -323,9 +323,21 @@ class GitHubService:
         if status != 0:
             fail("could not get origin URL")
 
-        origin_match = re.match(r'https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$', origin_url.strip())
+        origin_url = origin_url.strip()
+
+        # Try HTTPS URL format: https://github.com/user/repo.git
+        origin_match = re.match(r'https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$', origin_url)
+
+        # Try SSH URL format: ssh://git@github.com/user/repo.git
         if origin_match is None:
-            fail(f"origin must be a GitHub repository: {origin_url.strip()}")
+            origin_match = re.match(r'ssh://git@github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$', origin_url)
+
+        # Try SCP-style SSH format: git@github.com:user/repo.git
+        if origin_match is None:
+            origin_match = re.match(r'git@github\.com:([^/]+)/([^/]+?)(?:\.git)?/?$', origin_url)
+
+        if origin_match is None:
+            fail(f"origin must be a GitHub repository: {origin_url}")
 
         source_user = origin_match.group(1)
         source_repo = origin_match.group(2).replace('.git', '')
