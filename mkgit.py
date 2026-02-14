@@ -180,14 +180,26 @@ class GitOperations:
             return f"Repository {source_dir.name}"
 
     @staticmethod
-    def setup_and_push_remote(source_dir: Path, remote_url: str, current_branch: str) -> None:
+    def rename_origin_to_upstream() -> bool:
+        """Rename origin to upstream if origin exists. Returns True if renamed."""
+        status, _ = git_command("remote", "get-url", "origin", verbose=False)
+        if status == 0:
+            git_command("remote", "rename", "origin", "upstream")
+            return True
+        return False
+
+    @staticmethod
+    def setup_and_push_remote(source_dir: Path, remote_url: str, current_branch: str, is_fork: bool = False) -> None:
         """Setup git remote and push."""
         os.chdir(source_dir)
 
-        status, _ = git_command("remote", "get-url", "origin", verbose=False)
-        if status == 0:
-            warn("updating existing remote")
-            git_command("remote", "rm", "origin")
+        if is_fork:
+            GitOperations.rename_origin_to_upstream()
+        else:
+            status, _ = git_command("remote", "get-url", "origin", verbose=False)
+            if status == 0:
+                warn("updating existing remote")
+                git_command("remote", "rm", "origin")
 
         git_command("remote", "add", "origin", remote_url)
 
@@ -650,9 +662,9 @@ def create_remote_repository(site_config: SiteConfig, git_ctx: GitContext,
         return service.get_repository_url(site_config, git_ctx)
 
 
-def setup_and_push_remote(git_ctx: GitContext, remote_url: str) -> None:
+def setup_and_push_remote(git_ctx: GitContext, remote_url: str, is_fork: bool = False) -> None:
     """Setup git remote and push."""
-    GitOperations.setup_and_push_remote(git_ctx.source_dir, remote_url, git_ctx.current_branch)
+    GitOperations.setup_and_push_remote(git_ctx.source_dir, remote_url, git_ctx.current_branch, is_fork)
 
 
 # Main workflow
@@ -757,7 +769,7 @@ def main() -> None:
 
     # Create repository and setup remote
     remote_url = create_remote_repository(site_config, git_ctx, args.private, args.fork, auth_handler)
-    setup_and_push_remote(git_ctx, remote_url)
+    setup_and_push_remote(git_ctx, remote_url, args.fork)
 
 
 if __name__ == "__main__":
